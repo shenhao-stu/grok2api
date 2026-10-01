@@ -119,6 +119,7 @@ var officialTokenPriceRules = []tokenPriceRule{
 	{Pattern: regexp.MustCompile(`^grok-4\.7-build-fast(?:-(?:low|medium|high|xhigh))?$`), CanonicalModel: "grok-4.7-build-fast"},
 	{Pattern: regexp.MustCompile(`^grok-4\.7(?:-(?:latest|low|medium|high|xhigh))?$`), CanonicalModel: "grok-4.7"},
 	{Pattern: regexp.MustCompile(`^grok-(?:build-0\.1|code-fast(?:-1)?|composer-2\.5-fast)(?:-[a-z0-9.]+)*$`), CanonicalModel: "grok-build-0.1"},
+	{Pattern: regexp.MustCompile(`^grok-4\.7(?:-[a-z0-9.]+)*$`), CanonicalModel: "grok-4.7"},
 	{Pattern: regexp.MustCompile(`^grok-4\.6(?:-[a-z0-9.]+)*$`), CanonicalModel: "grok-4.6"},
 	{Pattern: regexp.MustCompile(`^grok-4\.5(?:-[a-z0-9.]+)*$`), CanonicalModel: "grok-4.5"},
 	{Pattern: regexp.MustCompile(`^grok-4\.3(?:-[a-z0-9.]+)*$`), CanonicalModel: "grok-4.3"},
