@@ -16,12 +16,14 @@ import (
 )
 
 const (
-	startupRecoveryBudget      = 20 * time.Second
-	startupCriticalWindow      = 2 * time.Minute
-	startupCriticalLimit       = 100
-	statsigWarmupInterval      = 15 * time.Minute
-	webQuotaStaleAfter         = 30 * time.Minute
-	webQuotaCatchupEvery       = 30 * time.Minute
+	startupRecoveryBudget = 20 * time.Second
+	startupCriticalWindow = 2 * time.Minute
+	startupCriticalLimit  = 100
+	statsigWarmupInterval = 15 * time.Minute
+	// Keep passive quota observations newer than the public 15-minute safety
+	// cutoff, even for exhausted accounts with no inference traffic.
+	webQuotaStaleAfter         = 5 * time.Minute
+	webQuotaCatchupEvery       = time.Minute
 	consoleUsageMigrationEvery = 24 * time.Hour
 	consoleUsageMigrationRetry = 5 * time.Minute
 	consoleQuotaStaleAfter     = 6 * time.Hour

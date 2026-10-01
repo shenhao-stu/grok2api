@@ -69,6 +69,7 @@ export function QualityGuardPage() {
     queryFn: () => getQualityGuardStatus(nodeIDs),
     placeholderData: keepPreviousData,
     refetchInterval: 5_000,
+    refetchIntervalInBackground:true, refetchOnWindowFocus:true,
   });
   const statusRef = useRef<QualityGuardStatus | undefined>(statusQuery.data);
   useEffect(() => {
@@ -196,7 +197,7 @@ export function QualityGuardPage() {
   const selectedNodes = selectableNodes.filter((node) => selectedNodeIDs.has(node.id));
   const allNodesSelected = selectableNodes.length > 0 && selectedNodes.length === selectableNodes.length;
   const toggleAllNodes = (checked: boolean) => setSelectedNodeIDs(checked ? new Set(selectableNodes.map((node) => node.id)) : new Set());
-  const fresh = isFresh(status);
+  const fresh = !statusQuery.isError && isFresh(status);
   const guardedNodes = status?.nodes ?? {};
   const quarantined = status?.nodeSummary?.quarantined ?? Object.values(guardedNodes).filter((node) => node.disabled_by_guard).length;
   const quarantinedLeases = status?.nodeSummary?.quarantinedLeases ?? Object.values(guardedNodes).reduce((total, node) => total + (node.quarantined_lease_count ?? 0), 0);
@@ -227,6 +228,7 @@ export function QualityGuardPage() {
           </Button>
         )}
       />
+      {statusQuery.isError&&<p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs">{i18n.language.startsWith('zh')?'状态刷新失败，保留上次观察；每 5 秒自动重试。':'Status refresh failed. Showing the last observation and retrying every 5 seconds.'}</p>}
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as QualityGuardTab)}>
         <TabsList>
@@ -621,7 +623,8 @@ function isFresh(status?: QualityGuardStatus): boolean {
   const expectedUpdateSeconds = status.config.mode === "active"
     ? status.config.active_interval_seconds
     : status.config.passive_poll_seconds;
-  return Date.now() / 1000 - status.updatedAt < Math.max(60, expectedUpdateSeconds * 3);
+  const heartbeat=status.config.mode==='active'?status.lastActiveCycleAt:status.lastPassivePollAt;
+  return !!heartbeat && Date.now() / 1000 - heartbeat < Math.max(60, expectedUpdateSeconds * 3);
 }
 function qualityTestState(result: QualityTestResult, status: QualityGuardStatus): QualityGuardNodeState {
   const softTPS = status.config?.soft_tps ?? 500;

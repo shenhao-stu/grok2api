@@ -18,15 +18,17 @@ func NewHandler(service *dashboardapp.Service) *Handler { return &Handler{servic
 func (h *Handler) Register(router *gin.RouterGroup) { router.GET("/dashboard", h.get) }
 
 type responseDTO struct {
-	Period      string             `json:"period"`
-	GeneratedAt time.Time          `json:"generatedAt"`
-	Range       rangeDTO           `json:"range"`
-	Resources   resourcesDTO       `json:"resources"`
-	Usage       usageDTO           `json:"usage"`
-	Series      []seriesDTO        `json:"series"`
-	Activity    []activityDTO      `json:"activity"`
-	TopModels   []modelUsageDTO    `json:"topModels"`
-	Providers   []providerUsageDTO `json:"providers"`
+	WelfareLedger       *welfareLedgerDTO  `json:"welfareLedger,omitempty"`
+	WelfareLedgerStatus string             `json:"welfareLedgerStatus"`
+	Period              string             `json:"period"`
+	GeneratedAt         time.Time          `json:"generatedAt"`
+	Range               rangeDTO           `json:"range"`
+	Resources           resourcesDTO       `json:"resources"`
+	Usage               usageDTO           `json:"usage"`
+	Series              []seriesDTO        `json:"series"`
+	Activity            []activityDTO      `json:"activity"`
+	TopModels           []modelUsageDTO    `json:"topModels"`
+	Providers           []providerUsageDTO `json:"providers"`
 }
 
 type rangeDTO struct {
@@ -132,7 +134,9 @@ func (h *Handler) get(c *gin.Context) {
 	for _, item := range result.Providers {
 		providers = append(providers, providerUsageDTO{Provider: item.Provider, Requests: item.Requests, SuccessfulRequests: item.SuccessfulRequests, Tokens: item.Tokens})
 	}
+	ledger, ledgerStatus := welfareLedger(c.Request.Context())
 	response.Success(c, http.StatusOK, responseDTO{
+		WelfareLedger: ledger, WelfareLedgerStatus: ledgerStatus,
 		Period:      string(result.Period),
 		GeneratedAt: result.GeneratedAt,
 		Range:       rangeDTO{Start: result.Range.Start, End: result.Range.End},

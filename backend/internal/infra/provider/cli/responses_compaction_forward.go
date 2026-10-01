@@ -65,7 +65,7 @@ func (a *Adapter) forwardGatewayCompactionWithPolicy(
 	upstreamRequest := request
 	upstreamRequest.Streaming = true
 	primaryBase := a.primaryBaseURL()
-	base := a.inferenceBaseForOperation(request.Credential, request.Billing, request.Method, request.Path)
+	base := a.inferenceBaseForResponse(request)
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -85,7 +85,7 @@ func (a *Adapter) forwardGatewayCompactionWithPolicy(
 		resp, reqURL := call.response, call.upstreamURL
 
 		var recoveredPrimaryFailure *provider.DiagnosticResponse
-		if strings.EqualFold(base, primaryBase) && shouldProbeXAIInferenceFallback(request.Credential, request.Billing, request.Method, request.Path, resp.StatusCode) {
+		if strings.EqualFold(base, primaryBase) && allowsXAIModel(request.Model) && shouldProbeXAIInferenceFallback(request.Credential, request.Billing, request.Method, request.Path, resp.StatusCode) {
 			primaryBody, primaryTruncated, readErr := provider.ReadDiagnosticBody(resp.Body)
 			_ = resp.Body.Close()
 			if readErr != nil {

@@ -213,11 +213,13 @@ func (s *Service) executeImage(
 		}
 		if err != nil {
 			errorCode := "upstream_unavailable"
+			statusCode := http.StatusServiceUnavailable
 			var selectionFailure *SelectionUnavailableError
 			if errors.As(err, &selectionFailure) {
 				errorCode = selectionFailure.Code()
+				statusCode = selectionFailure.HTTPStatus()
 			}
-			writeFailureAudit(http.StatusServiceUnavailable, errorCode, lastCredentialFailure)
+			writeFailureAudit(statusCode, errorCode, lastCredentialFailure)
 			return nil, fmt.Errorf("%w: %w", ErrNoAvailableAccount, err)
 		}
 		excluded[lease.Credential.ID] = true

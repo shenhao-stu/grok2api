@@ -10,6 +10,8 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/chenyme/grok2api/backend/internal/domain/account"
@@ -443,6 +445,14 @@ func (a *Adapter) syncWeeklyCredits(ctx context.Context, credential account.Cred
 		a.egress.Feedback(context.WithoutCancel(ctx), lease.NodeID, response.StatusCode, nil)
 		return account.QuotaWindow{}, fmt.Errorf("Grok Web 周额度接口返回 %d", response.StatusCode)
 	}
+	// gRPC-Web can fail with HTTP 200, an empty body and a grpc-status header.
+	// Never turn that transport success into a valid quota observation.
+	if err := quotaGRPCStatusError(response.Header.Get("grpc-status")); err != nil {
+		return account.QuotaWindow{}, err
+	}
+	if err := quotaGRPCStatusError(response.Trailer.Get("grpc-status")); err != nil {
+		return account.QuotaWindow{}, err
+	}
 	window, err := parseWeeklyCreditsResponse(body, credential.ID, time.Now().UTC())
 	if err != nil {
 		return account.QuotaWindow{}, err
@@ -535,13 +545,28 @@ func parseWeeklyCreditsResponse(body []byte, accountID uint64, syncedAt time.Tim
 	}, nil
 }
 
+func quotaGRPCStatusError(status string) error {
+	status = strings.TrimSpace(status)
+	if status == "" || status == "0" {
+		return nil
+	}
+	code, err := strconv.Atoi(status)
+	if err != nil || code < 0 || code > 16 {
+		return fmt.Errorf("Grok Web quota returned an invalid gRPC status")
+	}
+	if code == 16 {
+		return provider.ErrUnauthorized
+	}
+	return fmt.Errorf("Grok Web quota provider unavailable (gRPC %d)", code)
+}
+
 func firstGRPCWebMessage(body []byte) ([]byte, error) {
 	message, grpcStatus, err := parseGRPCWebFrames(body)
 	if err != nil {
 		return nil, err
 	}
-	if grpcStatus != "" && grpcStatus != "0" {
-		return nil, fmt.Errorf("Grok Web 周额度 gRPC 状态为 %s", grpcStatus)
+	if err := quotaGRPCStatusError(grpcStatus); err != nil {
+		return nil, err
 	}
 	if message == nil {
 		return nil, fmt.Errorf("Grok Web 周额度响应缺少消息帧")

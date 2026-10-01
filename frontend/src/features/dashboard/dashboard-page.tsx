@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DashboardActivity } from "@/features/dashboard/dashboard-activity";
 import { getDashboard, type DashboardPeriod } from "@/features/dashboard/dashboard-api";
 import { DashboardOverview, DashboardResources } from "@/features/dashboard/dashboard-overview";
+import { WelfareLedger } from "./welfare-ledger";
 import { DashboardProviderDistribution } from "@/features/dashboard/dashboard-provider-distribution";
 import { DashboardTopModels } from "@/features/dashboard/dashboard-top-models";
 import { DashboardTrend } from "@/features/dashboard/dashboard-trend";
@@ -27,7 +28,7 @@ export function DashboardPage() {
   const forceRefresh = useRef(false);
   const { periodDays } = preferences;
   const period: DashboardPeriod = toPeriodValue(periodDays);
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const timezone = import.meta.env.VITE_WELFARE_ADMIN === 'true' ? "Asia/Shanghai" : Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
   useEffect(() => {
     saveDashboardPreferences(preferences);
@@ -38,6 +39,7 @@ export function DashboardPage() {
     queryFn: () => getDashboard(period, timezone, forceRefresh.current),
     placeholderData: (previous) => previous,
     staleTime: 15_000,
+    refetchInterval:30_000, refetchOnWindowFocus:true,
   });
 
   function refreshAll(): void {
@@ -88,6 +90,7 @@ export function DashboardPage() {
       </div>
 
       <DashboardOverview dashboard={dashboard} locale={i18n.language} loading={loading} />
+      {import.meta.env.VITE_WELFARE_ADMIN === 'true' && <WelfareLedger dashboard={dashboard} locale={i18n.language}/>}
 
       <div className="grid items-stretch gap-2 xl:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)]">
         <DashboardTrend

@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,12 +43,16 @@ type toolConfiguration struct {
 	ForcedName      string
 	ResponseTools   []any
 	ResponseChoice  any
+	identities      map[string]toolIdentity
 }
+
+type toolIdentity struct{ Name, Namespace string }
 
 type parsedToolCall struct {
 	ID        string
 	Name      string
 	Arguments string
+	Namespace string
 }
 
 type toolParseResult struct {
@@ -73,7 +78,7 @@ type toolStreamSieve struct {
 
 // parseToolConfiguration 兼容 Chat Completions 与 Responses 的函数工具结构。
 func parseToolConfiguration(rawTools, rawChoice json.RawMessage) (toolConfiguration, error) {
-	configuration := toolConfiguration{Choice: "auto", ResponseChoice: "auto"}
+	configuration := toolConfiguration{Choice: "auto", ResponseChoice: "auto", identities: make(map[string]toolIdentity)}
 	trimmed := bytes.TrimSpace(rawTools)
 	if len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")) {
 		var values []map[string]any
@@ -86,6 +91,38 @@ func parseToolConfiguration(rawTools, rawChoice json.RawMessage) (toolConfigurat
 		configuration.ResponseTools = make([]any, 0, len(values))
 		for _, value := range values {
 			configuration.ResponseTools = append(configuration.ResponseTools, value)
+			if value["type"] == "namespace" {
+				namespace, _ := value["name"].(string)
+				if !toolNamePattern.MatchString(namespace) {
+					return toolConfiguration{}, errors.New("namespace.name 无效")
+				}
+				children, ok := value["tools"].([]any)
+				if !ok || len(children) == 0 {
+					return toolConfiguration{}, errors.New("namespace.tools 必须是非空函数数组")
+				}
+				for _, child := range children {
+					definition, ok := child.(map[string]any)
+					if !ok {
+						return toolConfiguration{}, errors.New("namespace.tools 必须包含函数对象")
+					}
+					function, supported, err := parseFunctionTool(definition)
+					if err != nil {
+						return toolConfiguration{}, err
+					}
+					if !supported {
+						return toolConfiguration{}, errors.New("namespace.tools 只支持 function")
+					}
+					identity := toolIdentity{Name: function.Name, Namespace: namespace}
+					function.Description = namespace + "." + function.Name + ": " + function.Description
+					function.Name = namespacedToolAlias(namespace, function.Name)
+					configuration.identities[function.Name] = identity
+					configuration.Functions = append(configuration.Functions, function)
+					if len(configuration.Functions) > maxFunctionTools {
+						return toolConfiguration{}, fmt.Errorf("tools 展开后不能超过 %d 个函数", maxFunctionTools)
+					}
+				}
+				continue
+			}
 			function, supported, err := parseFunctionTool(value)
 			if err != nil {
 				return toolConfiguration{}, err
@@ -103,6 +140,9 @@ func parseToolConfiguration(rawTools, rawChoice json.RawMessage) (toolConfigurat
 				return toolConfiguration{}, fmt.Errorf("Grok Web 暂不支持 tools.type=%q", typeName)
 			}
 		}
+	}
+	if len(configuration.Functions) > maxFunctionTools {
+		return toolConfiguration{}, fmt.Errorf("tools 展开后不能超过 %d 个函数", maxFunctionTools)
 	}
 
 	choice, forcedName, responseChoice, err := parseToolChoice(rawChoice)
@@ -185,17 +225,42 @@ func parseToolChoice(raw json.RawMessage) (string, string, any, error) {
 		return typeName, "", value, nil
 	case "function":
 		name, _ := value["name"].(string)
+		namespace, _ := value["namespace"].(string)
 		if nested, ok := value["function"].(map[string]any); ok {
 			name, _ = nested["name"].(string)
+			if nestedNamespace, ok := nested["namespace"].(string); ok {
+				namespace = nestedNamespace
+			}
 		}
 		name = strings.TrimSpace(name)
 		if !toolNamePattern.MatchString(name) {
 			return "", "", nil, errors.New("tool_choice.function.name 无效")
 		}
+		if namespace != "" {
+			if !toolNamePattern.MatchString(namespace) {
+				return "", "", nil, errors.New("tool_choice.namespace 无效")
+			}
+			name = namespacedToolAlias(namespace, name)
+		}
 		return "required", name, value, nil
 	default:
 		return "", "", nil, fmt.Errorf("Grok Web 暂不支持 tool_choice.type=%q", typeName)
 	}
+}
+
+// Stable aliases keep equal leaf names in different namespaces distinct. Only
+// declared identities are restored; arbitrary model output cannot invent a tool.
+func namespacedToolAlias(namespace, name string) string {
+	return fmt.Sprintf("w_ns_%x", sha256.Sum256([]byte(namespace+"\x00"+name)))[:61]
+}
+
+func (c toolConfiguration) restoreToolCalls(calls []parsedToolCall) []parsedToolCall {
+	for index := range calls {
+		if identity, ok := c.identities[calls[index].Name]; ok {
+			calls[index].Name, calls[index].Namespace = identity.Name, identity.Namespace
+		}
+	}
+	return calls
 }
 
 // injectToolPrompt 将函数定义转换为 Grok Web 可稳定生成的 XML 调用约定。
@@ -414,6 +479,11 @@ func (s *toolStreamSieve) Feed(chunk string) toolStreamResult {
 		s.capturing = true
 		s.buffer = combined[index:]
 		combined = combined[:index]
+	} else {
+		// Continue buffering a tool block split across upstream token frames.
+		// Emitting combined here leaks XML and loses the partial call.
+		s.buffer = combined
+		combined = ""
 	}
 	lower := strings.ToLower(s.buffer)
 	endIndex := strings.Index(lower, "</tool_calls>")

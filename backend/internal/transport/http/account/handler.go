@@ -17,6 +17,7 @@ import (
 	accountapp "github.com/chenyme/grok2api/backend/internal/application/account"
 	accountsyncapp "github.com/chenyme/grok2api/backend/internal/application/accountsync"
 	accountdomain "github.com/chenyme/grok2api/backend/internal/domain/account"
+	"github.com/chenyme/grok2api/backend/internal/infra/provider"
 	"github.com/chenyme/grok2api/backend/internal/repository"
 	"github.com/chenyme/grok2api/backend/internal/shared/response"
 	"github.com/gin-gonic/gin"
@@ -280,56 +281,56 @@ type accountImportResponse struct {
 }
 
 type accountResponse struct {
-	ID                         uint64                  `json:"id,string"`
-	Provider                   string                  `json:"provider"`
-	AuthType                   string                  `json:"authType"`
-	WebTier                    string                  `json:"webTier,omitempty"`
-	WebTierSyncedAt            *time.Time              `json:"webTierSyncedAt,omitempty"`
-	WebNSFWEnabledAt           *time.Time              `json:"nsfwEnabledAt,omitempty"`
-	WebTermsAcceptedAt         *time.Time              `json:"termsAcceptedAt,omitempty"`
-	Name                       string                  `json:"name"`
-	Email                      string                  `json:"email,omitempty"`
-	UserID                     string                  `json:"userId,omitempty"`
-	TeamID                     string                  `json:"teamId,omitempty"`
-	Enabled                    bool                    `json:"enabled"`
-	AuthStatus                 string                  `json:"authStatus"`
-	ExpiresAt                  *time.Time              `json:"expiresAt,omitempty"`
-	Refreshable                bool                    `json:"refreshable"`
-	RefreshDueAt               *time.Time              `json:"refreshDueAt,omitempty"`
-	LastRefreshAt              *time.Time              `json:"lastRefreshAt,omitempty"`
-	RefreshFailures            int                     `json:"refreshFailureCount"`
-	LastRefreshErrorStatus     int                     `json:"lastRefreshErrorStatus,omitempty"`
-	LastRefreshError           string                  `json:"lastRefreshErrorCode,omitempty"`
-	LastRefreshErrorMessage    string                  `json:"lastRefreshErrorMessage,omitempty"`
-	LastRefreshErrorResponse   string                  `json:"lastRefreshErrorResponse,omitempty"`
-	Priority                   int                     `json:"priority"`
-	MaxConcurrent              int                     `json:"maxConcurrent"`
-	MinimumRemaining           float64                 `json:"minimumRemaining"`
-	FailureCount               int                     `json:"failureCount"`
-	CooldownUntil              *time.Time              `json:"cooldownUntil,omitempty"`
-	LastError                  string                  `json:"lastError,omitempty"`
+	ID                       uint64     `json:"id,string"`
+	Provider                 string     `json:"provider"`
+	AuthType                 string     `json:"authType"`
+	WebTier                  string     `json:"webTier,omitempty"`
+	WebTierSyncedAt          *time.Time `json:"webTierSyncedAt,omitempty"`
+	WebNSFWEnabledAt         *time.Time `json:"nsfwEnabledAt,omitempty"`
+	WebTermsAcceptedAt       *time.Time `json:"termsAcceptedAt,omitempty"`
+	Name                     string     `json:"name"`
+	Email                    string     `json:"email,omitempty"`
+	UserID                   string     `json:"userId,omitempty"`
+	TeamID                   string     `json:"teamId,omitempty"`
+	Enabled                  bool       `json:"enabled"`
+	AuthStatus               string     `json:"authStatus"`
+	ExpiresAt                *time.Time `json:"expiresAt,omitempty"`
+	Refreshable              bool       `json:"refreshable"`
+	RefreshDueAt             *time.Time `json:"refreshDueAt,omitempty"`
+	LastRefreshAt            *time.Time `json:"lastRefreshAt,omitempty"`
+	RefreshFailures          int        `json:"refreshFailureCount"`
+	LastRefreshErrorStatus   int        `json:"lastRefreshErrorStatus,omitempty"`
+	LastRefreshError         string     `json:"lastRefreshErrorCode,omitempty"`
+	LastRefreshErrorMessage  string     `json:"lastRefreshErrorMessage,omitempty"`
+	LastRefreshErrorResponse string     `json:"lastRefreshErrorResponse,omitempty"`
+	Priority                 int        `json:"priority"`
+	MaxConcurrent            int        `json:"maxConcurrent"`
+	MinimumRemaining         float64    `json:"minimumRemaining"`
+	FailureCount             int        `json:"failureCount"`
+	CooldownUntil            *time.Time `json:"cooldownUntil,omitempty"`
+	LastError                string     `json:"lastError,omitempty"`
 	// EnabledDoesNotClearCooldown is set on PATCH when enabled was changed
 	// while the account is still cooling. Toggling enabled is not a health reset.
-	EnabledDoesNotClearCooldown bool `json:"enabledDoesNotClearCooldown,omitempty"`
-	LastUsedAt                 *time.Time              `json:"lastUsedAt,omitempty"`
-	LinkedAccountID            uint64                  `json:"linkedAccountId,omitempty,string"`
-	LinkedName                 string                  `json:"linkedAccountName,omitempty"`
-	LinkedProvider             string                  `json:"linkedProvider,omitempty"`
-	LinkedAccounts             []linkedAccountResponse `json:"linkedAccounts,omitempty"`
-	CreatedAt                  time.Time               `json:"createdAt"`
-	ObservedModel              string                  `json:"observedModel,omitempty"`
-	ObservedModelAt            *time.Time              `json:"observedModelAt,omitempty"`
-	CloudflareCookieConfigured bool                    `json:"cloudflareCookieConfigured"`
-	BuildSuperEntitled         bool                    `json:"buildSuperEntitled"`
-	BuildRouteMode             string                  `json:"buildRouteMode"`
-	BuildBotFlagged            bool                    `json:"buildBotFlagged"`
-	BuildBotFlagSource         int                     `json:"buildBotFlagSource,omitempty"`
-	EgressNodeID               uint64                  `json:"egressNodeId,omitempty,string"`
-	EgressAssignmentMode       string                  `json:"egressAssignmentMode,omitempty"`
-	ModelSyncFailed            bool                    `json:"modelSyncFailed,omitempty"`
-	Billing                    *billingResponse        `json:"billing,omitempty"`
-	Quota                      quotaResponse           `json:"quota"`
-	QuotaWindows               []quotaWindowResponse   `json:"quotaWindows,omitempty"`
+	EnabledDoesNotClearCooldown bool                    `json:"enabledDoesNotClearCooldown,omitempty"`
+	LastUsedAt                  *time.Time              `json:"lastUsedAt,omitempty"`
+	LinkedAccountID             uint64                  `json:"linkedAccountId,omitempty,string"`
+	LinkedName                  string                  `json:"linkedAccountName,omitempty"`
+	LinkedProvider              string                  `json:"linkedProvider,omitempty"`
+	LinkedAccounts              []linkedAccountResponse `json:"linkedAccounts,omitempty"`
+	CreatedAt                   time.Time               `json:"createdAt"`
+	ObservedModel               string                  `json:"observedModel,omitempty"`
+	ObservedModelAt             *time.Time              `json:"observedModelAt,omitempty"`
+	CloudflareCookieConfigured  bool                    `json:"cloudflareCookieConfigured"`
+	BuildSuperEntitled          bool                    `json:"buildSuperEntitled"`
+	BuildRouteMode              string                  `json:"buildRouteMode"`
+	BuildBotFlagged             bool                    `json:"buildBotFlagged"`
+	BuildBotFlagSource          int                     `json:"buildBotFlagSource,omitempty"`
+	EgressNodeID                uint64                  `json:"egressNodeId,omitempty,string"`
+	EgressAssignmentMode        string                  `json:"egressAssignmentMode,omitempty"`
+	ModelSyncFailed             bool                    `json:"modelSyncFailed,omitempty"`
+	Billing                     *billingResponse        `json:"billing,omitempty"`
+	Quota                       quotaResponse           `json:"quota"`
+	QuotaWindows                []quotaWindowResponse   `json:"quotaWindows,omitempty"`
 }
 
 type linkedAccountResponse struct {
@@ -1386,7 +1387,19 @@ func (h *Handler) writeServiceError(c *gin.Context, code string, err error, fall
 	case errors.Is(err, accountapp.ErrWebAccountScriptBusy):
 		response.Error(c, http.StatusConflict, "webAccountScriptBusy", err.Error())
 	default:
-		response.Error(c, fallbackStatus, code, fallbackMessage)
+		// Provider authentication belongs to the upstream account, never to the
+		// administrator session. Do not return 401/403 and log the operator out.
+		status, _ := provider.ErrorHTTPStatus(err)
+		switch {
+		case status == http.StatusPaymentRequired:
+			response.Error(c, http.StatusPaymentRequired, "providerQuotaExhausted", "上游账号额度不足或计费状态受限，请检查订阅与额度")
+		case status == http.StatusTooManyRequests:
+			response.Error(c, http.StatusTooManyRequests, "providerRateLimited", "上游账号暂时限流，请稍后重试")
+		case status == http.StatusUnauthorized || status == http.StatusForbidden || errors.Is(err, provider.ErrUnauthorized):
+			response.Error(c, http.StatusFailedDependency, "providerAuthorizationFailed", "上游账号授权失效或访问受限，请刷新该账号凭据")
+		default:
+			response.Error(c, fallbackStatus, code, fallbackMessage)
+		}
 	}
 }
 

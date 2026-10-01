@@ -76,6 +76,7 @@ type chatMessage struct {
 	ToolCallID string          `json:"tool_call_id"`
 	CallID     string          `json:"call_id"`
 	Name       string          `json:"name"`
+	Namespace  string          `json:"namespace"`
 	Arguments  string          `json:"arguments"`
 	Output     json.RawMessage `json:"output"`
 }
@@ -556,6 +557,7 @@ func (a *Adapter) streamOpenAIResponse(ctx context.Context, source io.ReadCloser
 						}
 						return flushSideChannel()
 					}
+					result.Calls = tools.restoreToolCalls(result.Calls)
 					parsed.ToolCalls = result.Calls
 					return writeToolCalls(result.Calls)
 				}
@@ -588,6 +590,7 @@ func (a *Adapter) streamOpenAIResponse(ctx context.Context, source io.ReadCloser
 				}
 			}
 			if len(result.Calls) > 0 {
+				result.Calls = tools.restoreToolCalls(result.Calls)
 				parsed.ToolCalls = result.Calls
 				if err := writeToolCalls(result.Calls); err != nil {
 					_ = writer.CloseWithError(err)
@@ -689,6 +692,12 @@ func normalizeOpenAIInput(input openAIRequest, operation string) (normalizedChat
 		if typeName == "function_call" {
 			if !toolNamePattern.MatchString(strings.TrimSpace(message.Name)) {
 				return normalizedChatInput{}, errors.New("function_call.name 无效")
+			}
+			if message.Namespace != "" {
+				if !toolNamePattern.MatchString(message.Namespace) {
+					return normalizedChatInput{}, errors.New("function_call.namespace 无效")
+				}
+				message.Name = namespacedToolAlias(message.Namespace, strings.TrimSpace(message.Name))
 			}
 			arguments := normalizeToolArguments(message.Arguments)
 			if !json.Valid([]byte(arguments)) {
@@ -1134,7 +1143,11 @@ func webResponseError(value map[string]any) error {
 		return fmt.Errorf("%w: %s", errWebAntiBot, message)
 	}
 	normalized := strings.ToLower(message)
-	if strings.Contains(normalized, "usage limit") || strings.Contains(normalized, "usage quota") {
+	stringCode, _ := value["code"].(string)
+	quotaCode := strings.ToLower(stringCode)
+	if code == 8 || quotaCode == "resource_exhausted" || quotaCode == "rate_limit_exceeded" || quotaCode == "quota_exceeded" || quotaCode == "usage_pool_exhausted" ||
+		strings.Contains(normalized, "usage limit") || strings.Contains(normalized, "usage quota") ||
+		strings.Contains(normalized, "used up your media generation credits") {
 		return fmt.Errorf("%w: %s", errWebUsageLimit, message)
 	}
 	return errors.New(message)
@@ -1351,7 +1364,7 @@ func applyParsedToolCalls(parsed *parsedChat, configuration toolConfiguration) {
 	}
 	cleaned := removeToolSyntax(parsed.Text.String(), result)
 	parsed.resetText(cleaned)
-	parsed.ToolCalls = result.Calls
+	parsed.ToolCalls = configuration.restoreToolCalls(result.Calls)
 }
 
 func (a *Adapter) archiveChatImages(ctx context.Context, credential account.Credential, parsed *parsedChat) error {
@@ -1881,10 +1894,14 @@ func buildOpenAIResult(operation, responseID, model string, parsed parsedChat, s
 			output = append(output, message)
 		}
 		for _, call := range parsed.ToolCalls {
-			output = append(output, map[string]any{
+			item := map[string]any{
 				"id": newWebID("fc"), "type": "function_call", "status": "completed",
 				"call_id": call.ID, "name": call.Name, "arguments": call.Arguments,
-			})
+			}
+			if call.Namespace != "" {
+				item["namespace"] = call.Namespace
+			}
+			output = append(output, item)
 		}
 	}
 	tools := parsed.Tools

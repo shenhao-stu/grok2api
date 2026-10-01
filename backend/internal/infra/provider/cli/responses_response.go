@@ -25,6 +25,7 @@ func (c *responsesToolCompatibility) normalizeResponseJSON(body []byte) ([]byte,
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("解析 Grok Build Responses 响应: %w", err)
 	}
+	c.promoteXMLResponse(response)
 	if err := c.rewriteResponseValue(response); err != nil {
 		return nil, err
 	}
@@ -43,7 +44,7 @@ func (c *responsesToolCompatibility) normalizeResponseStream(source io.ReadClose
 	reader, writer := io.Pipe()
 	go func() {
 		defer source.Close()
-		err := consumeCompatibleSSE(source, func(event compatibleSSEEvent) error {
+		writeEvent := func(event compatibleSSEEvent) error {
 			if isPrivateBuildControlEvent(event) {
 				return nil
 			}
@@ -83,7 +84,27 @@ func (c *responsesToolCompatibility) normalizeResponseStream(source io.ReadClose
 				}
 			}
 			return nil
+		}
+		filter := xmlToolStream{compatibility: c}
+		err := consumeCompatibleSSE(source, func(event compatibleSSEEvent) error {
+			events, err := filter.accept(event)
+			if err != nil {
+				return err
+			}
+			for _, current := range events {
+				if err := writeEvent(current); err != nil {
+					return err
+				}
+			}
+			return nil
 		})
+		if err == nil {
+			for _, event := range filter.flush() {
+				if err = writeEvent(event); err != nil {
+					break
+				}
+			}
+		}
 		_ = writer.CloseWithError(err)
 	}()
 	return reader

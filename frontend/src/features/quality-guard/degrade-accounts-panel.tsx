@@ -41,6 +41,7 @@ export function DegradeAccountsPanel({ softTPS, hardTPS, failClosed, minGenMs }:
       minHits: hitsMin, page, pageSize,
     }),
     refetchInterval: 15_000,
+    refetchOnWindowFocus:true,refetchIntervalInBackground:true,
   });
 
   const data = query.data;

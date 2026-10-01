@@ -75,6 +75,7 @@ type Config struct {
 type ServerConfig struct {
 	Listen                string   `yaml:"listen"`
 	MaxBodyBytes          int64    `yaml:"maxBodyBytes"`
+	MaxActiveBodyBytes    int64    `yaml:"maxActiveBodyBytes"`
 	MaxConcurrentRequests int      `yaml:"maxConcurrentRequests"`
 	TrustedProxies        []string `yaml:"trustedProxies"`
 	ReadTimeout           Duration `yaml:"readTimeout"`
@@ -460,14 +461,17 @@ func (c Config) Validate() error {
 	if c.Server.MaxBodyBytes <= 0 || c.Server.MaxBodyBytes > maxServerBodyBytes {
 		return fmt.Errorf("server.maxBodyBytes 必须在 1 到 %d 字节之间", maxServerBodyBytes)
 	}
+	if c.Server.MaxActiveBodyBytes < c.Server.MaxBodyBytes || c.Server.MaxActiveBodyBytes > 8<<30 {
+		return errors.New("server.maxActiveBodyBytes 必须至少容纳一个完整请求且不超过 8 GiB")
+	}
 	if c.Server.ReadTimeout.Value() <= 0 || c.Server.ReadTimeout.Value() > maxReadTimeout {
 		return errors.New("server.readTimeout 必须大于零且不超过 1 小时")
 	}
 	if c.Server.RequestTimeout.Value() <= 0 || c.Server.RequestTimeout.Value() > maxRequestTimeout {
 		return errors.New("server.requestTimeout 必须大于零且不超过 24 小时")
 	}
-	if c.Server.MaxConcurrentRequests < 1 || c.Server.MaxConcurrentRequests > 100000 {
-		return errors.New("server.maxConcurrentRequests 必须在 1 到 100000 之间")
+	if c.Server.MaxConcurrentRequests != -1 && (c.Server.MaxConcurrentRequests < 1 || c.Server.MaxConcurrentRequests > 100000) {
+		return errors.New("server.maxConcurrentRequests 须为 -1（不限）或 1 到 100000")
 	}
 	for _, value := range c.Server.TrustedProxies {
 		trimmed := strings.TrimSpace(value)
@@ -874,7 +878,8 @@ func defaultConfig() Config {
 	return Config{
 		Server: ServerConfig{
 			Listen:                "127.0.0.1:8000",
-			MaxBodyBytes:          32 << 20,
+			MaxBodyBytes:          90 << 20,
+			MaxActiveBodyBytes:    512 << 20,
 			MaxConcurrentRequests: 1024,
 			ReadTimeout:           Duration(15 * time.Minute),
 			RequestTimeout:        Duration(2 * time.Hour),

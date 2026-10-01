@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock, Eye, ListVideo, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usePrivateMedia } from "./use-private-media";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -262,10 +263,13 @@ export function VideoGalleryPage() {
 function VideoPreview({ assetId }: { assetId: string }) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const media = usePrivateMedia("videos", assetId);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(()=>{ if(media.error)setState("error"); },[media.error]);
 
   function retry(): void {
     setState("loading");
+    media.retry();
     videoRef.current?.load();
   }
 
@@ -274,7 +278,7 @@ function VideoPreview({ assetId }: { assetId: string }) {
       <video
         ref={videoRef}
         className={cn("h-auto max-h-[70vh] w-auto max-w-full object-contain", state === "error" && "invisible")}
-        src={videoAssetURL(assetId)}
+        src={media.url}
         controls
         playsInline
         preload="auto"
@@ -417,6 +421,3 @@ function formatSpec(job: MediaJobDTO): string {
   return [job.size, job.quality].filter(Boolean).join(" · ") || "-";
 }
 
-function videoAssetURL(assetID: string): string {
-  return `/v1/media/videos/${encodeURIComponent(assetID)}`;
-}

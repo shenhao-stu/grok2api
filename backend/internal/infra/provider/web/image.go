@@ -183,6 +183,52 @@ func (c *imagineCollector) Images() []imagineImageValue {
 	return values
 }
 
+// A missing image alone is not proof of a policy rejection. Only classify a
+// completed batch when every observed slot explicitly reports moderation.
+func (c *imagineCollector) AllModerated(expected int) bool {
+	if expected <= 0 || c.terminalCount < expected || len(c.slots) == 0 {
+		return false
+	}
+	for _, slot := range c.slots {
+		if !slot.completed || !slot.moderated {
+			return false
+		}
+	}
+	return true
+}
+
+func imagePolicyError() map[string]any {
+	return map[string]any{"type": "error", "error": map[string]any{
+		"message": "Image generation was rejected by the upstream content policy. Please revise your request.",
+		"type":    "invalid_request_error", "code": "content_policy_violation", "param": "prompt",
+	}}
+}
+
+func imageQuotaError() map[string]any {
+	return map[string]any{"type": "error", "error": map[string]any{
+		"message": "The upstream media quota is temporarily exhausted. Please retry later.",
+		"type":    "rate_limit_error", "code": "usage_limit_reached",
+	}}
+}
+
+func imageQuotaResponse() *provider.Response {
+	response := jsonProviderResponse(http.StatusTooManyRequests, imageQuotaError())
+	response.Header.Set("Retry-After", "30")
+	return response
+}
+
+func imagineEventError(message map[string]any) error {
+	if detail, ok := message["error"].(map[string]any); ok {
+		return webResponseError(detail)
+	}
+	// Imagine's WebSocket schema uses err_code/err_msg, unlike chat's
+	// code/message envelope. Preserve typed failures across both transports.
+	if code, ok := message["err_code"]; ok {
+		return webResponseError(map[string]any{"code": code, "message": message["err_msg"]})
+	}
+	return webResponseError(message)
+}
+
 func (c *imagineCollector) ReadyImages() []imagineImageValue {
 	values := make([]imagineImageValue, 0, len(c.slots))
 	for _, slot := range c.slots {
@@ -734,6 +780,9 @@ func (a *Adapter) generateWSImageAttempt(ctx context.Context, request provider.I
 			continue
 		}
 		if message["type"] == "error" {
+			if errors.Is(imagineEventError(message), errWebUsageLimit) {
+				return imageQuotaResponse(), nil
+			}
 			upstreamErr := fmt.Errorf("Imagine WebSocket 返回错误")
 			a.egress.Feedback(context.WithoutCancel(ctx), lease.NodeID, 0, upstreamErr)
 			return nil, upstreamErr
@@ -743,6 +792,9 @@ func (a *Adapter) generateWSImageAttempt(ctx context.Context, request provider.I
 	a.egress.Feedback(context.WithoutCancel(ctx), lease.NodeID, http.StatusOK, nil)
 	images := collector.Images()
 	if len(images) == 0 {
+		if collector.AllModerated(modelConfig.ExpectedCount) {
+			return jsonProviderResponse(http.StatusBadRequest, imagePolicyError()), nil
+		}
 		return nil, fmt.Errorf("Imagine WebSocket 完成但没有可用图片")
 	}
 	if len(images) < count {
@@ -850,6 +902,9 @@ func (a *Adapter) editImageAttempt(ctx context.Context, request provider.ImageEd
 	for _, image := range images {
 		uploaded, uploadErr := a.uploadFileV2Direct(ctx, cfg, lease, token, image, cfg.BaseURL+"/imagine", imagineSelfUploadSource, "image_edit_upload")
 		if uploadErr != nil {
+			if errors.Is(uploadErr, errInvalidChatImage) {
+				return invalidImageRequest(uploadErr.Error())
+			}
 			return nil, uploadErr
 		}
 		if uploaded.MetadataID == "" {
@@ -884,6 +939,9 @@ func (a *Adapter) editImageAttempt(ctx context.Context, request provider.ImageEd
 	capture := &boundedCapture{limit: 8 << 20}
 	parsed, consumeErr := consumeUpstream(io.TeeReader(response.Body, capture), nil)
 	if consumeErr != nil {
+		if errors.Is(consumeErr, errWebUsageLimit) {
+			return imageQuotaResponse(), nil
+		}
 		return nil, consumeErr
 	}
 	urls := imageEditResultURLs(&parsed, capture.Bytes())
@@ -997,6 +1055,11 @@ func (a *Adapter) streamImageEdit(
 		return nil
 	})
 	if consumeErr != nil {
+		if errors.Is(consumeErr, errWebUsageLimit) {
+			err := writeSSE(writer, "error", imageQuotaError())
+			_ = writer.CloseWithError(err)
+			return
+		}
 		a.egress.Feedback(context.WithoutCancel(ctx), lease.NodeID, 0, consumeErr)
 		_ = writer.CloseWithError(consumeErr)
 		return
@@ -1344,6 +1407,14 @@ func decodeDirectFileUploadResponse(source io.Reader) (uploadedFile, error) {
 		return uploadedFile{}, fmt.Errorf("V2 上传文件响应无效: %w", err)
 	}
 	if directFileUploadTerminalError(value.TerminalError) {
+		// This explicit file-parser rejection is deterministic for the input.
+		// Retrying it with every account only cools otherwise healthy accounts.
+		// Leave unknown/auth/quota/policy terminal errors on their existing path.
+		var terminalText string
+		if json.Unmarshal(value.TerminalError, &terminalText) == nil &&
+			strings.Contains(terminalText, "[WKE=file:parse-failed]") {
+			return uploadedFile{}, fmt.Errorf("%w: 上游无法解析图片，请重新导出为有效 PNG、JPEG 或 WebP", errInvalidChatImage)
+		}
 		return uploadedFile{}, errors.New("V2 上传文件被上游拒绝")
 	}
 	metadataID := strings.TrimSpace(value.FileMetadata.ID)
@@ -1555,6 +1626,11 @@ func (a *Adapter) streamImagineImages(ctx context.Context, writer *io.PipeWriter
 			continue
 		}
 		if message["type"] == "error" {
+			if errors.Is(imagineEventError(message), errWebUsageLimit) {
+				err := writeSSE(writer, "error", imageQuotaError())
+				_ = writer.CloseWithError(err)
+				return
+			}
 			upstreamErr := fmt.Errorf("Imagine WebSocket 返回错误")
 			a.egress.Feedback(context.WithoutCancel(ctx), lease.NodeID, 0, upstreamErr)
 			_ = writer.CloseWithError(upstreamErr)
@@ -1601,6 +1677,15 @@ func (a *Adapter) streamImagineImages(ctx context.Context, writer *io.PipeWriter
 			emitted++
 		}
 		if collector.Done(modelConfig.ExpectedCount) && emitted < count {
+			if emitted == 0 && collector.AllModerated(modelConfig.ExpectedCount) {
+				a.egress.Feedback(context.WithoutCancel(ctx), lease.NodeID, http.StatusOK, nil)
+				if err := writeSSE(writer, "error", imagePolicyError()); err != nil {
+					_ = writer.CloseWithError(err)
+					return
+				}
+				_ = writer.Close()
+				return
+			}
 			incompleteErr := fmt.Errorf("上游仅返回 %d/%d 张可用图片", emitted, count)
 			_ = writer.CloseWithError(incompleteErr)
 			return

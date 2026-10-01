@@ -761,6 +761,22 @@ func TestGetBillingUsesCreditsAndLiveSubscriptionTier(t *testing.T) {
 	}
 }
 
+func TestGetBillingPreservesStatusWithoutUpstreamBody(t *testing.T) {
+	cipher, _ := security.NewCipher(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	encrypted, _ := cipher.Encrypt("fixture-access-token")
+	for _, status := range []int{401, 402, 403, 429, 500} {
+		adapter := NewAdapter(Config{BaseURL: "https://example.invalid/v1"}, cipher)
+		adapter.http.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("fixture-private-provider-body")), Request: request}, nil
+		})
+		_, err := adapter.GetBilling(context.Background(), account.Credential{EncryptedAccessToken: encrypted})
+		got, ok := provider.ErrorHTTPStatus(err)
+		if !ok || got != status || strings.Contains(err.Error(), "fixture-private") {
+			t.Fatalf("status lost or upstream body exposed: %v", err)
+		}
+	}
+}
+
 func TestNormalizeAccountModelCapabilitiesSuperAddsVideo15(t *testing.T) {
 	adapter := &Adapter{}
 	build := account.Credential{Provider: account.ProviderBuild}

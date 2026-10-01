@@ -145,6 +145,31 @@ func TestWriteServiceErrorUsesCredentialLimitCodes(t *testing.T) {
 	}
 }
 
+type providerStatusFixture int
+
+func (e providerStatusFixture) Error() string       { return "fixture-private-provider-body" }
+func (e providerStatusFixture) HTTPStatusCode() int { return int(e) }
+
+func TestWriteServiceErrorDistinguishesProviderFailures(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		status, want int
+		code         string
+	}{
+		{402, 402, "providerQuotaExhausted"}, {429, 429, "providerRateLimited"},
+		{401, 424, "providerAuthorizationFailed"}, {403, 424, "providerAuthorizationFailed"},
+		{500, 502, "billingRefreshFailed"},
+	} {
+		rec := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(rec)
+		new(Handler).writeServiceError(ctx, "billingRefreshFailed", fmt.Errorf("wrapped: %w", providerStatusFixture(tc.status)), 502, "刷新账号额度失败")
+		body := rec.Body.String()
+		if rec.Code != tc.want || !strings.Contains(body, `"code":"`+tc.code+`"`) || strings.Contains(body, "fixture-private") {
+			t.Fatalf("status=%d body=%s", rec.Code, body)
+		}
+	}
+}
+
 func TestCredentialExportRejectsOffsetPagination(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

@@ -3,15 +3,26 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"reflect"
 	"strings"
 )
 
-func normalizeResponsesTools(payload map[string]json.RawMessage) (*responsesToolCompatibility, error) {
-	if rawTools := payload["tools"]; len(rawTools) > 0 && strings.Contains(string(rawTools), "automation_update") {
-		slog.Info("DEBUG_RAW_AUTOMATION_TOOLS", "tools", string(rawTools))
+// Chat and Messages are already in Responses shape at this boundary. Retain
+// the same tool metadata so all three response paths receive identical repairs.
+func normalizeConversationTools(body []byte) ([]byte, *responsesToolCompatibility, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, nil, err
 	}
+	compatibility, err := normalizeResponsesTools(payload)
+	if err != nil {
+		return nil, nil, err
+	}
+	encoded, err := json.Marshal(payload)
+	return encoded, compatibility, err
+}
+
+func normalizeResponsesTools(payload map[string]json.RawMessage) (*responsesToolCompatibility, error) {
 	compatibility := newResponsesToolCompatibility()
 	tools, hasTools, err := decodeOptionalArray(payload["tools"], "tools")
 	if err != nil {
@@ -71,12 +82,10 @@ func normalizeResponsesTools(payload map[string]json.RawMessage) (*responsesTool
 		}
 		compatibility.changed = true
 	}
-	if rawTools := payload["tools"]; len(rawTools) > 0 && strings.Contains(string(rawTools), "automation_update") {
-		slog.Info("DEBUG_NORMALIZED_AUTOMATION_TOOLS", "tools", string(rawTools))
-	}
 	if err := compatibility.normalizeToolChoice(payload, normalizedTools); err != nil {
 		return nil, err
 	}
+	compatibility.configureXMLTools(payload)
 	if !compatibility.changed && len(compatibility.functionSchemas) == 0 {
 		return nil, nil
 	}

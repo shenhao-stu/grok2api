@@ -46,7 +46,26 @@ func TestPublicImageSupportsGetHeadAndETag(t *testing.T) {
 	}
 	router := gin.New()
 	NewHandler(service).RegisterPublic(router)
+	admin := router.Group("/api/admin", func(c *gin.Context) {
+		if c.GetHeader("Authorization") != "Bearer admin-fixture" {
+			c.AbortWithStatus(401)
+		}
+	})
+	NewHandler(service).RegisterAdmin(admin)
 	path := "/v1/media/images/" + asset.ID
+	privatePath := "/api/admin/media/images/" + asset.ID + "/content"
+	unauth := httptest.NewRecorder()
+	router.ServeHTTP(unauth, httptest.NewRequest(http.MethodGet, privatePath, nil))
+	if unauth.Code != 401 {
+		t.Fatal("private image lacks authentication")
+	}
+	private := httptest.NewRecorder()
+	privateRequest := httptest.NewRequest(http.MethodGet, privatePath, nil)
+	privateRequest.Header.Set("Authorization", "Bearer admin-fixture")
+	router.ServeHTTP(private, privateRequest)
+	if private.Code != 200 || private.Header().Get("Cache-Control") != "private, no-store" || private.Body.Len() != len(raw) {
+		t.Fatal("private image failed or is publicly cacheable")
+	}
 
 	get := httptest.NewRecorder()
 	router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, path, nil))

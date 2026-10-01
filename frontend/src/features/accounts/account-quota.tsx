@@ -57,6 +57,14 @@ export function AccountQuota({ quota, billing, locale }: { quota: QuotaDTO; bill
 
 function BuildQuota({ quota, billing, locale }: { quota: QuotaDTO; billing?: BillingDTO; locale: string }) {
   const { t } = useTranslation();
+  // Recovery is based on an actual upstream refusal. A stale billing snapshot
+  // must not suggest spendable quota while scheduling is blocked.
+  if (quota.status === "waitingReset" || quota.status === "probing") {
+    const detail = quota.status === "probing" ? t("accounts.paidProbingQuota")
+      : quota.nextProbeAt ? t("accounts.paidWaitingResetUntil", {time:formatDateTime(quota.nextProbeAt,locale)})
+      : t("accounts.quotaResetUnknown");
+    return <div className="space-y-1.5 text-xs text-amber-700 dark:text-amber-300"><span>{t("accounts.waitingReset")}</span><p className="text-[11px] leading-relaxed text-muted-foreground">{detail}</p></div>;
+  }
   const percentageQuota = quota.unit === "percent";
   const hasWeekly = percentageQuota || billing?.usagePeriodType === "USAGE_PERIOD_TYPE_WEEKLY";
   const hasMonthly = !percentageQuota && quota.limit > 0;

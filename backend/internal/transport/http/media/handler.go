@@ -35,6 +35,8 @@ func (h *Handler) RegisterPublic(router *gin.Engine) {
 
 // RegisterAdmin 注册管理端媒体列表和统计端点。
 func (h *Handler) RegisterAdmin(router *gin.RouterGroup) {
+	router.GET("/media/images/:assetId/content", h.getImage)
+	router.GET("/media/videos/:assetId/content", h.getVideo)
 	router.GET("/media/images", h.listImages)
 	router.DELETE("/media/images", h.deleteImages)
 	router.GET("/media/images/stats", h.imageStats)
@@ -73,6 +75,9 @@ func (h *Handler) getImage(c *gin.Context) {
 	c.Header("Content-Type", asset.MIMEType)
 	c.Header("Content-Length", strconv.FormatInt(asset.SizeBytes, 10))
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	if strings.HasPrefix(c.Request.URL.Path, "/api/admin/") {
+		c.Header("Cache-Control", "private, no-store")
+	}
 	c.Header("ETag", etag)
 	c.Header("X-Content-Type-Options", "nosniff")
 	if c.Request.Method == http.MethodHead {
@@ -102,6 +107,9 @@ func (h *Handler) getVideo(c *gin.Context) {
 	c.Header("Content-Type", asset.MIMEType)
 	c.Header("Content-Disposition", mediafile.VideoContentDisposition(asset.ID, asset.MIMEType))
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	if strings.HasPrefix(c.Request.URL.Path, "/api/admin/") {
+		c.Header("Cache-Control", "private, no-store")
+	}
 	c.Header("ETag", `"`+asset.SHA256+`"`)
 	c.Header("X-Content-Type-Options", "nosniff")
 	http.ServeContent(c.Writer, c.Request, asset.ID, asset.CreatedAt, seeker)

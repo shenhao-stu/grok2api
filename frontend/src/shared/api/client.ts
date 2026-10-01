@@ -134,7 +134,7 @@ async function sendApiRequest(path: string, options: RequestOptions): Promise<Re
     requestBody = JSON.stringify(body);
   }
   if (authenticated && accessToken) {
-    requestHeaders.set("Authorization", `Bearer ${accessToken}`);
+    requestHeaders.set((import.meta.env.VITE_WELFARE_ADMIN === 'true' ? 'X-Welfare-Authorization' : 'Authorization'), `Bearer ${accessToken}`);
   }
 
   return fetch(`${runtimeConfig.apiBaseUrl}${path}`, {
@@ -160,6 +160,16 @@ export async function apiRequest<T>(path: string, options: RequestOptions, decod
   }
 
   return parseResponse(response, decode);
+}
+
+// Keep admin credentials in headers. Never put tokens into media URLs or copy
+// them to storage, and never relax the public /v1 media boundary.
+export async function apiBlob(path: string, signal?: AbortSignal, retry = true): Promise<Blob> {
+  if (!/^\/api\/admin\/v1\/media\/(images|videos)\/[^/]+\/content$/.test(path)) throw new Error("Invalid media path");
+  const response = await sendApiRequest(path, {signal});
+  if (response.status === 401 && retry && await refreshAccessToken() === "refreshed") return apiBlob(path, signal, false);
+  if (!response.ok) throw new ApiError(response.status, "mediaUnavailable", `HTTP ${response.status}`);
+  return response.blob();
 }
 
 export type ApiStreamEvent<T> = {

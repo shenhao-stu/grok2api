@@ -22,6 +22,8 @@ export type DashboardUsageDTO = {
 };
 
 export type DashboardDTO = {
+  welfareLedgerStatus?: string;
+  welfareLedger?: {start:string;end:string;updatedAt:string;unit:string;timezone:string;consumed:number;granted:number;redeemed:number;checkin:number;expired:number;inventoryCreated:number;requests:number;successful:number;failed:number;pending:number};
   period: DashboardPeriod;
   generatedAt: string;
   range: { start: string; end: string };
@@ -58,6 +60,8 @@ const dashboardModelItem = hasShape({
   outputTokens: isNumber, reasoningTokens: isNumber, tokens: isNumber, billedCostUsdTicks: isNumber,
 });
 const decodeDashboard = createObjectDecoder<DashboardDTO>("dashboard", {
+  welfareLedgerStatus:isOptional(isString),
+  welfareLedger:isOptional(hasShape({start:isString,end:isString,updatedAt:isString,unit:isString,timezone:isString,consumed:isNumber,granted:isNumber,redeemed:isNumber,checkin:isNumber,expired:isNumber,inventoryCreated:isNumber,requests:isNumber,successful:isNumber,failed:isNumber,pending:isNumber})),
   period: isOneOf("24h", "7d", "30d", "90d"),
   generatedAt: isString,
   range: hasShape({ start: isString, end: isString }),

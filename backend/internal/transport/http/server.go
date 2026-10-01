@@ -40,6 +40,7 @@ type Dependencies struct {
 	Logger             *slog.Logger
 	RequestTimeout     time.Duration
 	MaxBodyBytes       int64
+	MaxActiveBodyBytes int64
 	TrustedProxies     []string
 	ConcurrencyGate    *middleware.ConcurrencyGate
 	SecureCookies      bool
@@ -188,6 +189,7 @@ func New(deps Dependencies) *gin.Engine {
 		})
 	}
 	v1.Use(middleware.ClientAuth(deps.ClientKeys))
+	v1.Use(middleware.BodyMemoryBudget(deps.MaxBodyBytes, deps.MaxActiveBodyBytes))
 	inferenceHandler := inference.NewHandler(deps.Gateway, deps.Models, deps.MaxBodyBytes, deps.PublicAPIBaseURL)
 	if deps.Settings != nil {
 		inferenceHandler.SetPublicAPIBaseURLResolver(deps.Settings.PublicAPIBaseURL)

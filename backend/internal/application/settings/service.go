@@ -305,7 +305,7 @@ func (s *Service) ReloadPersisted(ctx context.Context) error {
 
 func applyDomainConfig(base config.Config, value settingsdomain.Config) config.Config {
 	// 旧版运行设置没有 Server 字段，反序列化后为零；升级时沿用当前配置默认值。
-	if value.Server.MaxConcurrentRequests > 0 {
+	if value.Server.MaxConcurrentRequests != 0 {
 		base.Server.MaxConcurrentRequests = value.Server.MaxConcurrentRequests
 	}
 	capacityWait := value.Routing.CapacityWait

@@ -55,7 +55,7 @@ export function DashboardOverview({ dashboard, locale, loading }: DashboardDataP
         />
         <DashboardMetric
           icon={CircleDollarSign}
-          label={t("dashboard.billing")}
+          label={import.meta.env.VITE_WELFARE_ADMIN === 'true' ? (locale.startsWith('zh')?"参考费用估算 · USD":"Reference cost · USD") : t("dashboard.billing")}
           value={formatUSD(usage?.billedCostUsdTicks ?? 0, locale)}
           detail={t("dashboard.averageRequestCost", { cost: formatUSDValue(averageRequestCost, locale) })}
           loading={loading}

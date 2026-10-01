@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Database, Image as ImageIcon, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { usePrivateMedia } from "./use-private-media";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -175,7 +176,8 @@ export function GalleryPage() {
 function ImageCard({ image, locale, selectionMode, selected, onSelectedChange }: { image: MediaAssetDTO; locale: string; selectionMode: boolean; selected: boolean; onSelectedChange: (checked: boolean) => void }) {
   const { t } = useTranslation();
   // 管理端图库与 API 同源，使用相对路径避免依赖未配置或仅对外可用的公共地址。
-  const imageURL = `/v1/media/images/${encodeURIComponent(image.id)}`;
+  const media = usePrivateMedia("images", image.id);
+  const imageURL = media.url;
   return (
     <article className="group relative min-w-0 [content-visibility:auto] [contain-intrinsic-size:0_280px]">
       <Checkbox
@@ -197,7 +199,7 @@ function ImageCard({ image, locale, selectionMode, selected, onSelectedChange }:
         }}
       >
         <div className="relative aspect-square overflow-hidden rounded-lg bg-muted">
-          <img src={imageURL} alt={image.id} loading="lazy" decoding="async" className="size-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]" />
+          {imageURL ? <img src={imageURL} alt={image.id} loading="lazy" decoding="async" className="size-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]" /> : <span role="status" className="grid size-full place-items-center p-4 text-xs text-muted-foreground">{media.error ? t("errors.generic") : t("common.loading")}</span>}
           {selected ? <span className="pointer-events-none absolute inset-0 rounded-lg ring-1 ring-inset ring-primary/70" aria-hidden="true" /> : null}
           {!selectionMode ? (
             <span className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-background/85 text-foreground opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">

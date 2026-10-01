@@ -64,7 +64,7 @@ function validPublicAPIBaseURL(value: string): boolean {
 
 export const settingsSchema = z.object({
   server: z.object({
-    maxConcurrentRequests: positiveInteger.max(100_000),
+    maxConcurrentRequests: z.union([z.literal(-1), positiveInteger.max(100_000)]),
   }),
   providerBuild: z.object({
     baseURL: z.url(),

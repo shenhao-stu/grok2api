@@ -217,7 +217,7 @@ export function SettingsPage() {
           <SettingsSection title={t("settings.server.title")}>
             <div className="space-y-0">
               <SettingsField controlId="server-max-concurrent-requests" label={t("settings.server.maxConcurrentRequests")} description={t("settings.server.maxConcurrentRequestsHelp")} error={form.formState.errors.server?.maxConcurrentRequests?.message}>
-                <Input id="server-max-concurrent-requests" type="number" min={1} max={100_000} {...form.register("server.maxConcurrentRequests", { valueAsNumber: true })} />
+                <Input id="server-max-concurrent-requests" type="number" min={-1} max={100_000} {...form.register("server.maxConcurrentRequests", { valueAsNumber: true })} />
               </SettingsField>
             </div>
           </SettingsSection>

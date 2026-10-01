@@ -263,6 +263,9 @@ func (s *webResponsesStream) ToolCalls(calls []parsedToolCall) error {
 		index := s.allocateOutputIndex()
 		itemID := newWebID("fc")
 		added := map[string]any{"id": itemID, "type": "function_call", "status": "in_progress", "call_id": call.ID, "name": call.Name, "arguments": ""}
+		if call.Namespace != "" {
+			added["namespace"] = call.Namespace
+		}
 		if err := writeSSE(s.writer, "response.output_item.added", map[string]any{
 			"type": "response.output_item.added", "response_id": s.responseID, "output_index": index, "item": added,
 		}); err != nil {
@@ -281,6 +284,9 @@ func (s *webResponsesStream) ToolCalls(calls []parsedToolCall) error {
 			return err
 		}
 		completed := map[string]any{"id": itemID, "type": "function_call", "status": "completed", "call_id": call.ID, "name": call.Name, "arguments": call.Arguments}
+		if call.Namespace != "" {
+			completed["namespace"] = call.Namespace
+		}
 		if err := writeSSE(s.writer, "response.output_item.done", map[string]any{
 			"type": "response.output_item.done", "response_id": s.responseID, "output_index": index, "item": completed,
 		}); err != nil {

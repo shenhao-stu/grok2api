@@ -53,6 +53,8 @@ type responsesToolCompatibility struct {
 	warnings            []string
 	warningSet          map[string]struct{}
 	changed             bool
+	xmlTools            map[string]any
+	xmlParallel         bool
 }
 
 // responsesRequestError 表示可直接映射为 OpenAI 错误结构的 Provider 请求错误。

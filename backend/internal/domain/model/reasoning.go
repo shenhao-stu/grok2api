@@ -20,6 +20,7 @@ const (
 )
 
 const GrokComposer25Fast = "grok-composer-2.5-fast"
+const Grok47BuildFast = "grok-4.7-build-fast"
 
 const grokComposerModelPrefix = "grok-composer-"
 
@@ -45,6 +46,8 @@ var reasoningEffortSuffixes = []string{
 var grokReasoningCapabilities = map[string][]string{
 	"grok-4.5":                     {ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh},
 	"grok-4.6":                     {ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh, ReasoningEffortXHigh},
+	"grok-4.7":                     {ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh, ReasoningEffortXHigh},
+	Grok47BuildFast:                {ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh, ReasoningEffortXHigh},
 	"grok-4.3":                     {ReasoningEffortNone, ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh},
 	"grok-build-0.1":               {ReasoningEffortNone},
 	"grok-4.20-0309-reasoning":     {ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh},

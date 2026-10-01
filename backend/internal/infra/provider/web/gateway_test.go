@@ -50,15 +50,20 @@ func TestGatewaySessionSupportsNewAndExistingConversations(t *testing.T) {
 func TestGatewayTurnEventsOmitCastleAndPreserveAttachments(t *testing.T) {
 	previous := &inferencedomain.WebResponseState{UpstreamParentResponseID: "response-1"}
 	item, response := gatewayTurnEvents("conversation-1", "hello", []string{"file-1"}, previous)
-	itemEvent := item["event"].(map[string]any)
-	if item["session_id"] != "conversation-1" || itemEvent["parent_response_id"] != "response-1" {
-		t.Fatalf("item event = %#v", item)
+	itemEvent := response["event"].(map[string]any)
+	if item != nil || response["session_id"] != "conversation-1" || itemEvent["type"] != "response.create" || itemEvent["parent_response_id"] != "response-1" {
+		t.Fatalf("attachment turn must be one response.create: item=%#v response=%#v", item, response)
 	}
-	encoded, err := json.Marshal(item)
+	encoded, err := json.Marshal(response)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(encoded)
+	// The browser encodes Mention.target as a protobuf oneof: its selected
+	// file_mention field is directly under mention, without a target wrapper.
+	if !strings.Contains(text, `"mention":{"file_mention":{"file_id":"file-1"}}`) || strings.Contains(text, `"target"`) {
+		t.Fatalf("invalid protobuf JSON attachment mention: %s", text)
+	}
 	for _, expected := range []string{`"file_attachment_ids":["file-1"]`, `"file_mention":{"file_id":"file-1"}`, `"text":{"text":"hello"}`} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("item JSON %s missing %s", text, expected)

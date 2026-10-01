@@ -238,6 +238,13 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 	if request.NormalizedMetadata != nil {
 		*request.NormalizedMetadata = provider.NormalizedRequestMetadata{}
 	}
+	// Validate the original body before Chat/Messages conversion can drop a tier.
+	if err := validateBuildServiceTier(request); err != nil {
+		if request.Operation == conversation.OperationChat || request.Operation == conversation.OperationMessages {
+			return invalidConversationResponse(request.Operation, err), nil
+		}
+		return invalidResponsesResponse(err), nil
+	}
 	accessToken, err := a.cipher.Decrypt(request.Credential.EncryptedAccessToken)
 	if err != nil {
 		return nil, err
@@ -252,11 +259,14 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 	// The scope contains the trusted session seed, model, and plane only; it is
 	// intentionally independent of the selected account.
 	primaryBase := a.primaryBaseURL()
-	base := a.inferenceBaseForOperation(request.Credential, request.Billing, request.Method, request.Path)
+	base := a.inferenceBaseForResponse(request)
 	conversationScope := a.conversationReasoningScope(request, base)
 	if request.NormalizeBody {
 		if request.Operation == conversation.OperationChat || request.Operation == conversation.OperationMessages {
 			body, conversationOptions, err = conversation.ConvertRequestWithReasoningReplay(body, request.Model, request.Operation, a.conversationReasoningCache, conversationScope)
+			if err == nil {
+				body, toolCompatibility, err = normalizeConversationTools(body)
+			}
 			if err == nil && conversationOptions.ReasoningEffortSet && request.NormalizedMetadata != nil {
 				request.NormalizedMetadata.ReasoningEffort = conversationOptions.ReasoningEffort
 			}
@@ -349,7 +359,7 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 	var recoveredPrimaryFailure *provider.DiagnosticResponse
 	var recoveredPrimaryAttempt *provider.RecoveredAttempt
 	// Only eligible operations probe XAI with an equivalent request after the Build primary explicitly returns 403.
-	if strings.EqualFold(base, primaryBase) && shouldProbeXAIInferenceFallback(request.Credential, request.Billing, request.Method, request.Path, resp.StatusCode) {
+	if strings.EqualFold(base, primaryBase) && allowsXAIModel(request.Model) && shouldProbeXAIInferenceFallback(request.Credential, request.Billing, request.Method, request.Path, resp.StatusCode) {
 		primaryCall := call
 		// Buffer the primary 403 body and replay it unchanged if fallback fails; never issue a second primary POST.
 		primaryBody, primaryTruncated, readErr := provider.ReadDiagnosticBody(resp.Body)
@@ -442,7 +452,7 @@ func (a *Adapter) ForwardResponse(ctx context.Context, request provider.Response
 		}
 	}
 	reasoningRecovery.appendWarnings(resp.Header)
-	if responsesOperation && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if (responsesOperation || toolCompatibility != nil) && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if request.Streaming {
 			resp.Body = toolCompatibility.normalizeResponseStream(resp.Body)
 			resp.Header.Del("Content-Length")
@@ -769,6 +779,11 @@ func (a *Adapter) NormalizeAccountModelCapabilities(models []string, billing *ac
 			continue
 		}
 		if _, exists := seen[model]; exists {
+			continue
+		}
+		// The live catalog can mention Fast before entitlement catches up. xAI
+		// explicitly excludes Build Free, so only confirmed paid accounts route it.
+		if model == modeldomain.Grok47BuildFast && !super {
 			continue
 		}
 		if model == buildVideoModel {
@@ -1138,6 +1153,18 @@ func (a *Adapter) url(path string) string {
 	return strings.TrimRight(a.config().BaseURL, "/") + "/" + strings.TrimLeft(path, "/")
 }
 
+// Control-plane errors retain status without retaining sensitive upstream bodies.
+type controlHTTPError struct {
+	operation string
+	status    int
+}
+
+func (e *controlHTTPError) Error() string {
+	return fmt.Sprintf("upstream %s returned HTTP %d", e.operation, e.status)
+}
+
+func (e *controlHTTPError) HTTPStatusCode() int { return e.status }
+
 func (a *Adapter) getBilling(ctx context.Context, credential account.Credential, accessToken, query string) (account.Billing, error) {
 	endpoint := a.url("/billing")
 	if query != "" {
@@ -1164,7 +1191,7 @@ func (a *Adapter) getBilling(ctx context.Context, credential account.Credential,
 		return account.Billing{}, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return account.Billing{}, fmt.Errorf("上游 Billing 接口返回 %d", resp.StatusCode)
+		return account.Billing{}, &controlHTTPError{operation: "billing", status: resp.StatusCode}
 	}
 	return parseBilling(body)
 }
@@ -1193,7 +1220,7 @@ func (a *Adapter) getSubscriptionTier(ctx context.Context, credential account.Cr
 		return "", err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("上游订阅接口返回 %d", resp.StatusCode)
+		return "", &controlHTTPError{operation: "subscription", status: resp.StatusCode}
 	}
 	return parseSubscriptionTier(body)
 }

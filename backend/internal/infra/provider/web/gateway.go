@@ -298,8 +298,10 @@ func runGatewayStream(ctx context.Context, connection *websocket.Conn, writer io
 		if created && attached && !turnSent {
 			turnSent = true
 			item, response := gatewayTurnEvents(currentSessionID, prompt, attachments, previous)
-			if err := sender.write(item); err != nil {
-				return fmt.Errorf("发送 Grok Gateway conversation.item.create: %w", err)
+			if item != nil {
+				if err := sender.write(item); err != nil {
+					return fmt.Errorf("发送 Grok Gateway conversation.item.create: %w", err)
+				}
 			}
 			if err := sender.write(response); err != nil {
 				return fmt.Errorf("发送 Grok Gateway response.create: %w", err)
@@ -346,7 +348,8 @@ func gatewaySession(model string, previous *inferencedomain.WebResponseState) ma
 func gatewayTurnEvents(sessionID, prompt string, attachments []string, previous *inferencedomain.WebResponseState) (map[string]any, map[string]any) {
 	chunks := make([]any, 0, len(attachments)+1)
 	for _, attachment := range attachments {
-		chunks = append(chunks, map[string]any{"mention": map[string]any{"target": map[string]any{"file_mention": map[string]any{"file_id": attachment}}}})
+		// "target" is the protobuf oneof name, not a field in its JSON form.
+		chunks = append(chunks, map[string]any{"mention": map[string]any{"file_mention": map[string]any{"file_id": attachment}}})
 	}
 	chunks = append(chunks, map[string]any{"text": map[string]any{"text": prompt}})
 	item := map[string]any{
@@ -372,6 +375,19 @@ func gatewayTurnEvents(sessionID, prompt string, attachments []string, previous 
 	responseEvent := map[string]any{
 		"session_id": sessionID,
 		"event":      map[string]any{"type": "response.create", "event_id": fmt.Sprintf("evt_resp_%d", now)},
+	}
+	if len(attachments) > 0 {
+		// Current browser turns bind files on response.create itself. A separate
+		// conversation.item.create can accept text while silently dropping images.
+		// Send the item exactly once, together with its attachment IDs and parent.
+		delete(item, "file_attachment_ids")
+		event := responseEvent["event"].(map[string]any)
+		event["item"] = item
+		event["file_attachment_ids"] = attachments
+		if previous != nil {
+			event["parent_response_id"] = previous.UpstreamParentResponseID
+		}
+		return nil, responseEvent
 	}
 	return itemEvent, responseEvent
 }

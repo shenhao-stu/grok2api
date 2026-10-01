@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/chenyme/grok2api/backend/internal/domain/account"
+	modeldomain "github.com/chenyme/grok2api/backend/internal/domain/model"
 	"github.com/chenyme/grok2api/backend/internal/infra/config"
 	"github.com/chenyme/grok2api/backend/internal/infra/provider"
 )
@@ -131,6 +132,23 @@ func (a *Adapter) inferenceBaseForOperation(credential account.Credential, billi
 		return a.fallbackBaseURL()
 	}
 	return a.primaryBaseURL()
+}
+
+// Fast is a Build-only product. Sending it to the public API can neither preserve
+// the promised execution tier nor succeed; account fallback preferences don't apply.
+func allowsXAIModel(model string) bool {
+	model = strings.TrimPrefix(model, "Build/")
+	if base, _, ok := modeldomain.ParseReasoningModelAlias(model); ok {
+		model = base
+	}
+	return model != modeldomain.Grok47BuildFast
+}
+
+func (a *Adapter) inferenceBaseForResponse(request provider.ResponseResourceRequest) string {
+	if !allowsXAIModel(request.Model) {
+		return a.primaryBaseURL()
+	}
+	return a.inferenceBaseForOperation(request.Credential, request.Billing, request.Method, request.Path)
 }
 
 // shouldProbeXAIInferenceFallback 只由当次 Build CLI 的严格 403 触发。

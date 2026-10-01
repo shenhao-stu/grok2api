@@ -16,16 +16,16 @@ type ConcurrencyGate struct {
 
 // NewConcurrencyGate 创建指定上限的推理入口并发闸门。
 func NewConcurrencyGate(limit int) *ConcurrencyGate {
-	if limit < 1 {
-		panic("middleware: 并发上限必须大于零")
+	if limit != -1 && limit < 1 {
+		panic("middleware: 并发上限须为正整数，或 -1 表示不限")
 	}
 	return &ConcurrencyGate{limit: limit}
 }
 
 // UpdateLimit 热更新并发上限；降低上限不会中断正在执行的请求。
 func (g *ConcurrencyGate) UpdateLimit(limit int) {
-	if limit < 1 {
-		panic("middleware: 并发上限必须大于零")
+	if limit != -1 && limit < 1 {
+		panic("middleware: 并发上限须为正整数，或 -1 表示不限")
 	}
 	g.mu.Lock()
 	g.limit = limit
@@ -36,7 +36,7 @@ func (g *ConcurrencyGate) UpdateLimit(limit int) {
 func (g *ConcurrencyGate) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		g.mu.Lock()
-		if g.active >= g.limit {
+		if g.limit > 0 && g.active >= g.limit {
 			g.mu.Unlock()
 			c.Header("Retry-After", "1")
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{
