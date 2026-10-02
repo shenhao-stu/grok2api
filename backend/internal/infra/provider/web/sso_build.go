@@ -23,7 +23,7 @@ import (
 
 const (
 	ssoBuildClientID = "b1a00492-073a-47ea-816f-4c329264a828"
-	ssoBuildScope    = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write"
+	ssoBuildScope    = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write workspaces:read workspaces:write"
 	ssoDeviceURL     = "https://auth.x.ai/oauth2/device/code"
 	ssoVerifyURL     = "https://auth.x.ai/oauth2/device/verify"
 	ssoApproveURL    = "https://auth.x.ai/oauth2/device/approve"
@@ -36,9 +36,10 @@ type ssoBuildHTTPClient interface {
 }
 
 type ssoBuildFlow struct {
-	client    ssoBuildHTTPClient
-	userAgent string
-	cookies   map[string]string
+	client     ssoBuildHTTPClient
+	userAgent  string
+	cookies    map[string]string
+	consentURL string
 }
 
 func (a *Adapter) ConvertToBuild(ctx context.Context, credential accountdomain.Credential) (provider.CredentialSeed, error) {
@@ -74,7 +75,7 @@ func (a *Adapter) ConvertToBuild(ctx context.Context, credential accountdomain.C
 }
 
 func (f *ssoBuildFlow) convert(ctx context.Context, credential accountdomain.Credential) (provider.CredentialSeed, error) {
-	form := url.Values{"client_id": {ssoBuildClientID}, "scope": {ssoBuildScope}}
+	form := url.Values{"client_id": {ssoBuildClientID}, "scope": {ssoBuildScope}, "referrer": {"grok-build"}}
 	status, _, body, err := f.do(ctx, http.MethodPost, ssoDeviceURL, form)
 	if err != nil {
 		return provider.CredentialSeed{}, err
@@ -101,8 +102,7 @@ func (f *ssoBuildFlow) convert(ctx context.Context, credential accountdomain.Cre
 		device.ExpiresIn = 1800
 	}
 
-	// verify/approve 已在 auth.x.ai 完成状态变更。重定向目标只是结果页，
-	// 因此不访问 accounts.x.ai，直接解析首个 3xx Location 的状态路径。
+	// The consent page supplies the one-time authorization token for approval.
 	status, finalURL, _, err := f.doWithFollow(ctx, http.MethodPost, ssoVerifyURL, url.Values{"user_code": {device.UserCode}}, false)
 	if err != nil {
 		return provider.CredentialSeed{}, err
@@ -119,9 +119,19 @@ func (f *ssoBuildFlow) convert(ctx context.Context, credential accountdomain.Cre
 		}
 		return provider.CredentialSeed{}, fmt.Errorf("SSO 自动验证 Device Flow 失败")
 	}
-	status, finalURL, _, err = f.doWithFollow(ctx, http.MethodPost, ssoApproveURL, url.Values{
-		"user_code": {device.UserCode}, "action": {"allow"}, "principal_type": {"User"}, "principal_id": {""},
-	}, false)
+	status, consentURL, consentBody, err := f.do(ctx, http.MethodGet, finalURL, nil)
+	if err != nil {
+		return provider.CredentialSeed{}, err
+	}
+	if status != http.StatusOK || ssoDeviceRedirectState(consentURL) != "consent" {
+		return provider.CredentialSeed{}, fmt.Errorf("读取 xAI Device Flow 授权表单失败: %w", conversionHTTPError{status: status})
+	}
+	approval, err := parseSSOConsentForm(consentBody, device.UserCode)
+	if err != nil {
+		return provider.CredentialSeed{}, err
+	}
+	f.consentURL = consentURL
+	status, finalURL, _, err = f.doWithFollow(ctx, http.MethodPost, ssoApproveURL, approval, false)
 	if err != nil {
 		return provider.CredentialSeed{}, err
 	}
@@ -244,6 +254,11 @@ func (f *ssoBuildFlow) doWithFollow(ctx context.Context, method, endpoint string
 		request.Header.Set("Cookie", f.cookieHeader())
 		if currentForm != nil {
 			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		if currentURL == ssoApproveURL && f.consentURL != "" {
+			consent, _ := url.Parse(f.consentURL)
+			request.Header.Set("Origin", consent.Scheme+"://"+consent.Host)
+			request.Header.Set("Referer", f.consentURL)
 		}
 		response, err := f.client.Do(request)
 		if err != nil {

@@ -69,11 +69,12 @@ func TestSSOBuildFlowMapsDeadSSOToUnauthorized(t *testing.T) {
 	}
 }
 
-func TestSSOBuildFlowUsesAuthEndpointsOnly(t *testing.T) {
+func TestSSOBuildFlowSubmitsConsentToken(t *testing.T) {
 	client := &scriptedSSOClient{responses: []*http.Response{
 		{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
 			`{"device_code":"dc","user_code":"uc","interval":1,"expires_in":1800}`))},
 		{StatusCode: http.StatusSeeOther, Header: http.Header{"Location": []string{"https://accounts.x.ai/oauth2/device/consent"}}, Body: io.NopCloser(strings.NewReader(""))},
+		{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(testConsentForm))},
 		{StatusCode: http.StatusSeeOther, Header: http.Header{"Location": []string{"https://accounts.x.ai/oauth2/device/done"}}, Body: io.NopCloser(strings.NewReader(""))},
 		{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
 			`{"access_token":"access","refresh_token":"refresh","expires_in":3600}`))},
@@ -83,13 +84,34 @@ func TestSSOBuildFlowUsesAuthEndpointsOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seed.AccessToken != "access" || seed.RefreshToken != "refresh" || len(client.requests) != 4 {
+	if seed.AccessToken != "access" || seed.RefreshToken != "refresh" || len(client.requests) != 5 {
 		t.Fatalf("seed=%#v requests=%d", seed, len(client.requests))
 	}
-	for _, request := range client.requests {
-		if request.URL.Hostname() != "auth.x.ai" {
-			t.Fatalf("device flow visited unexpected host %q", request.URL.Hostname())
-		}
+	approve := client.requests[3]
+	if err := approve.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+	if approve.Form.Get("consent_token") != "one-time&token" || approve.Form.Get("user_code") != "uc" || approve.Header.Get("Origin") != "https://accounts.x.ai" || approve.Header.Get("Referer") != client.requests[2].URL.String() {
+		t.Fatal("approval lost its consent binding")
+	}
+}
+
+const testConsentForm = `<form action="https://auth.x.ai/oauth2/device/approve" method="POST"><input type="hidden" name="user_code" value="uc"><input type="hidden" name="principal_type" value="User"><input type="hidden" name="principal_id" value=""><input type="hidden" name="consent_token" value="one-time&amp;token"><input type="hidden" name="castle_request_token" value=""><button name="action" value="allow">Allow</button></form>`
+
+func TestSSOConsentFormRejectsMissingOrConflictingAuthorization(t *testing.T) {
+	for name, body := range map[string]string{
+		"missing token":   strings.Replace(testConsentForm, `name="consent_token"`, `name="other"`, 1),
+		"wrong device":    strings.Replace(testConsentForm, `value="uc"`, `value="other"`, 1),
+		"wrong action":    strings.Replace(testConsentForm, ssoApproveURL, "https://example.com/approve", 1),
+		"duplicate form":  testConsentForm + testConsentForm,
+		"duplicate token": strings.Replace(testConsentForm, `</form>`, `<input type="hidden" name="consent_token" value="other"></form>`, 1),
+		"no allow":        strings.Replace(testConsentForm, `value="allow"`, `value="deny"`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseSSOConsentForm([]byte(body), "uc"); err == nil {
+				t.Fatal("invalid consent accepted")
+			}
+		})
 	}
 }
 
