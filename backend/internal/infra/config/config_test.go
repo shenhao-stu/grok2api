@@ -281,13 +281,13 @@ func TestBuildResponseHeaderTimeoutIsRuntimeOnly(t *testing.T) {
 
 func TestDefaultGrokBuildClientVersionMatchesLocalBaseline(t *testing.T) {
 	build := defaultConfig().Provider.Build
-	if RecommendedBuildClientVersion != "1.0.40" {
+	if RecommendedBuildClientVersion != "1.0.46" {
 		t.Fatalf("recommended clientVersion = %q", RecommendedBuildClientVersion)
 	}
 	if build.ClientVersion != RecommendedBuildClientVersion {
 		t.Fatalf("clientVersion = %q", build.ClientVersion)
 	}
-	if RecommendedBuildUserAgent != "grok-shell/1.0.40 (linux; x86_64)" {
+	if RecommendedBuildUserAgent != "grok-shell/1.0.46 (linux; x86_64)" {
 		t.Fatalf("recommended userAgent = %q", RecommendedBuildUserAgent)
 	}
 	if build.UserAgent != RecommendedBuildUserAgent {
@@ -532,7 +532,7 @@ func TestValidateRejectsUnsafeRuntimeLimits(t *testing.T) {
 			cfg.Audit.CommitDelay = Duration(maxAuditCommitDelay + time.Millisecond)
 		},
 		"client rpm":   func(cfg *Config) { cfg.ClientKeyDefaults.RPMLimit = clientkeydomain.MaxRPMLimit + 1 },
-		"image size":   func(cfg *Config) { cfg.Media.MaxImageBytes = 33 << 20 },
+		"image size":   func(cfg *Config) { cfg.Media.MaxImageBytes = (100 << 20) + 1 },
 		"media total":  func(cfg *Config) { cfg.Media.MaxTotalBytes = 1 },
 		"batch limit":  func(cfg *Config) { cfg.Batch.SyncConcurrency = 51 },
 		"batch jitter": func(cfg *Config) { cfg.Batch.RandomDelay = Duration(6 * time.Second) },

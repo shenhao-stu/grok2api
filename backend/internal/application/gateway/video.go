@@ -31,7 +31,7 @@ const (
 	videoJobRecoveryInterval = 30 * time.Second
 	videoOutputAttempts      = 3
 	// Base64 物化会同时持有原图和编码后字符串，单独限流避免高 mediaConcurrency 放大内存峰值。
-	videoInputMaterializeConcurrency = 4
+	videoInputMaterializeConcurrency = 2
 	videoInputJSONBaseBytes          = int64(len(`{"image_urls":[]}`))
 )
 
@@ -239,8 +239,8 @@ func validateVideoRouteParameters(providerValue account.Provider, operation prov
 	}
 	trimmedModel := strings.TrimSpace(upstreamModel)
 	hasReferences := referenceCount > 0
-	if providerValue == account.ProviderWeb && (hasImage || hasReferences) {
-		return fmt.Errorf("%w: Grok Web 当前仅支持文本生视频；图片视频请使用 Build 或 Console Provider", ErrVideoOperationUnsupported)
+	if providerValue == account.ProviderWeb && hasReferences {
+		return fmt.Errorf("%w: Grok Web 暂不支持 reference_images；单张首帧请使用 image", ErrVideoOperationUnsupported)
 	}
 	if providerValue == account.ProviderConsole && (trimmedModel == "grok-imagine-video" || trimmedModel == "grok-imagine-video-1.5") {
 		// 实测：8 张 reference_images 上游回 400
@@ -874,7 +874,7 @@ func (s *Service) resolveVideoInputReferences(ctx context.Context, references []
 			_ = body.Close()
 			return nil, fmt.Errorf("%w: file_id 必须引用%s", ErrVideoInputUnavailable, expectedKind)
 		}
-		data, readErr := io.ReadAll(io.LimitReader(body, media.MaxInputJSONBytes+1))
+		data, readErr := io.ReadAll(io.LimitReader(body, media.MaxInputAssetBytes+1))
 		closeErr := body.Close()
 		if readErr != nil {
 			return nil, fmt.Errorf("读取视频临时输入: %w", readErr)
@@ -882,7 +882,7 @@ func (s *Service) resolveVideoInputReferences(ctx context.Context, references []
 		if closeErr != nil {
 			return nil, fmt.Errorf("关闭视频临时输入: %w", closeErr)
 		}
-		if len(data) == 0 || len(data) > media.MaxInputJSONBytes {
+		if len(data) == 0 || len(data) > media.MaxInputAssetBytes {
 			return nil, ErrVideoInputTooLarge
 		}
 		if !addVideoReferenceBytes(&estimatedBytes, materializedVideoReferenceBytes(asset.MIMEType, int64(len(data)))) {
@@ -894,7 +894,7 @@ func (s *Service) resolveVideoInputReferences(ctx context.Context, references []
 }
 
 func materializedVideoReferenceBytes(mimeType string, sizeBytes int64) int64 {
-	if sizeBytes <= 0 || sizeBytes > int64(media.MaxInputJSONBytes) {
+	if sizeBytes <= 0 || sizeBytes > int64(media.MaxInputAssetBytes) {
 		return -1
 	}
 	return int64(len("data:")+len(mimeType)+len(";base64,")) + ((sizeBytes+2)/3)*4
@@ -904,7 +904,7 @@ func addVideoReferenceBytes(total *int64, referenceBytes int64) bool {
 	// 两个引号加一个逗号是保守的单元 JSON 开销（首项不需要逗号）。
 	const jsonElementOverhead = 3
 	addition := referenceBytes + jsonElementOverhead
-	limit := int64(media.MaxInputJSONBytes)
+	limit := int64((media.MaxInputAssetBytes+2)/3*4 + 4096)
 	if referenceBytes < 0 || addition < 0 || *total > limit-addition {
 		return false
 	}

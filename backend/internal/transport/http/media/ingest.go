@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// 20 MiB 为各 Provider 的共同安全输入上限，同时为全局 32 MiB multipart 请求上限保留编码开销。
+	// Upload limits apply to decoded input assets; chunk transport uses smaller request envelopes.
 	ingestMaxImageBytes = mediadomain.MaxInputAssetBytes
 	// ingestFetchTimeout 是 URL 导入单次抓取的整体超时。
 	ingestFetchTimeout = 20 * time.Second

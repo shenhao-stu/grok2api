@@ -251,8 +251,8 @@ func boundWebMediaDiagnostic(value string, limit int) string {
 }
 
 func (a *Adapter) GenerateVideo(ctx context.Context, request provider.VideoRequest) (provider.VideoResult, error) {
-	if strings.TrimSpace(request.ImageURL) != "" || len(request.ReferenceURLs) > 0 {
-		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, fmt.Errorf("Grok Web 当前仅支持文本生视频；图片视频请使用 Build 或 Console Provider"))
+	if len(request.ReferenceURLs) > 0 {
+		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, fmt.Errorf("Grok Web 暂不支持 reference_images；单张首帧请使用 image"))
 	}
 	cfg := a.config()
 	token, err := a.cipher.Decrypt(request.Credential.EncryptedAccessToken)
@@ -275,6 +275,24 @@ func (a *Adapter) GenerateVideo(ctx context.Context, request provider.VideoReque
 		resolution = "720p"
 	}
 	payload := videoCreatePayload(request.Prompt, ratio, resolution, segments[0])
+	if imageURL := strings.TrimSpace(request.ImageURL); imageURL != "" {
+		image, loadErr := a.loadChatImage(ctx, lease, imageURL, cfg.MaxInputImageBytes)
+		if loadErr != nil {
+			return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, loadErr)
+		}
+		image, loadErr = prepareFirstFrame(ctx, image)
+		if loadErr != nil {
+			return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, loadErr)
+		}
+		uploaded, uploadErr := a.uploadFileV2Direct(ctx, cfg, lease, token, image, cfg.BaseURL+"/imagine", imagineSelfUploadSource, "video_image_upload")
+		if uploadErr != nil {
+			return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, uploadErr)
+		}
+		if uploaded.MetadataID == "" {
+			return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, fmt.Errorf("上传图片成功但上游未返回 fileMetadataId"))
+		}
+		payload = imageVideoCreatePayload(request.Prompt, uploaded.MetadataID, ratio, resolution, segments[0])
+	}
 	response, err := a.postJSON(ctx, cfg, lease, token, cfg.BaseURL+"/rest/app-chat/conversations/new", payload, time.Duration(cfg.VideoTimeoutSeconds)*time.Second)
 	if err != nil {
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoCreateFailureStage(err), 0, err)
@@ -566,4 +584,16 @@ func videoCreatePayload(prompt, ratio, resolution string, seconds int) map[strin
 		},
 		"kind": "CONVERSATION_KIND_IMAGINE",
 	}
+}
+
+// The uploaded file metadata ID is the browser's first-frame asset; an upload task ID is not interchangeable.
+func imageVideoCreatePayload(prompt, assetID, ratio, resolution string, seconds int) map[string]any {
+	payload := videoCreatePayload(prompt, ratio, resolution, seconds)
+	payload["mediaGenInput"] = map[string]any{
+		"imageToVideo": map[string]any{
+			"prompt": prompt, "inputAssets": []string{assetID}, "aspectRatio": ratio,
+			"duration": seconds, "resolutionName": resolution, "mode": "custom",
+		},
+	}
+	return payload
 }

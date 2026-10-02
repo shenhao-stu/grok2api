@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/chenyme/grok2api/backend/internal/domain/account"
+	mediadomain "github.com/chenyme/grok2api/backend/internal/domain/media"
 	modeldomain "github.com/chenyme/grok2api/backend/internal/domain/model"
 	settingsdomain "github.com/chenyme/grok2api/backend/internal/domain/settings"
 	infraegress "github.com/chenyme/grok2api/backend/internal/infra/egress"
@@ -85,7 +86,7 @@ func normalizedConfig(cfg Config) Config {
 		cfg.VideoTimeoutSeconds = 900
 	}
 	if cfg.MaxInputImageBytes <= 0 {
-		cfg.MaxInputImageBytes = 32 << 20
+		cfg.MaxInputImageBytes = mediadomain.MaxInputAssetBytes
 	}
 	cfg.FreeVideoDurationCap = normalizeFreeVideoDurationCap(cfg.FreeVideoDurationCap)
 	return cfg

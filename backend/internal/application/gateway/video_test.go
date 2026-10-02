@@ -205,11 +205,11 @@ func TestVideoRouteParametersRejectConsoleReferenceLimits(t *testing.T) {
 	if err := validateVideoRouteParameters(account.ProviderBuild, provider.VideoOperationGenerate, "grok-imagine-video-1.5", "720p", false, 8, 15); err != nil {
 		t.Fatalf("Build 1.5 references error = %v", err)
 	}
-	// Web 新协议只有文本生视频抓包证据；不能退回已删除的 media-post 旧链路。
+	// First-frame input uses the current Imagine imageToVideo protocol; references remain separate.
 	if err := validateVideoRouteParameters(account.ProviderWeb, provider.VideoOperationGenerate, "grok-imagine-video", "720p", false, 0, 15); err != nil {
 		t.Fatalf("Web text video error = %v", err)
 	}
-	if err := validateVideoRouteParameters(account.ProviderWeb, provider.VideoOperationGenerate, "grok-imagine-video", "720p", true, 0, 6); !errors.Is(err, ErrVideoOperationUnsupported) {
+	if err := validateVideoRouteParameters(account.ProviderWeb, provider.VideoOperationGenerate, "grok-imagine-video", "720p", true, 0, 6); err != nil {
 		t.Fatalf("Web image video error = %v", err)
 	}
 	if err := validateVideoRouteParameters(account.ProviderWeb, provider.VideoOperationGenerate, "grok-imagine-video", "720p", false, 1, 6); !errors.Is(err, ErrVideoOperationUnsupported) {
@@ -506,7 +506,7 @@ func TestResolveVideoInputFileReferenceToDataURI(t *testing.T) {
 	if err := service.validateVideoInputReferences(context.Background(), []string{VideoInputFileReference("missing")}, "image"); !errors.Is(err, ErrVideoInputUnavailable) {
 		t.Fatalf("missing input error=%v", err)
 	}
-	store.inputSize = 20 << 20
+	store.inputSize = 60 << 20
 	if err := service.validateVideoInputReferences(context.Background(), []string{reference, reference}, "image"); !errors.Is(err, ErrVideoInputTooLarge) {
 		t.Fatalf("aggregate local input error=%v", err)
 	}
@@ -898,5 +898,25 @@ func TestVideoWebForbiddenRetriesPinnedAccountOnceThenFailsOver(t *testing.T) {
 	}
 	if stored.Status != media.StatusFailed || stored.AccountID != first.ID {
 		t.Fatalf("unclassified failed job = %#v", stored)
+	}
+}
+
+func TestLargeInputReferenceDoesNotExpandPersistedJob(t *testing.T) {
+	id := "input_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	store := &videoAssetStoreStub{inputID: id, inputData: []byte("image"), inputSize: 100 << 20}
+	service := &Service{mediaAssets: store}
+	reference := VideoInputFileReference(id)
+	if err := service.validateVideoInputReferences(context.Background(), []string{reference}, "image"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.validateVideoInputReferences(context.Background(), []string{reference, reference}, "image"); !errors.Is(err, ErrVideoInputTooLarge) {
+		t.Fatalf("aggregate accepted: %v", err)
+	}
+	store.inputSize = (100 << 20) + 1
+	if err := service.validateVideoInputReferences(context.Background(), []string{reference}, "image"); !errors.Is(err, ErrVideoInputTooLarge) {
+		t.Fatalf("oversized asset accepted: %v", err)
+	}
+	if media.MaxInputJSONBytes != 32<<20 {
+		t.Fatal("persisted JSON boundary changed")
 	}
 }

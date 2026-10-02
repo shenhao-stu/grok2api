@@ -120,10 +120,27 @@ export function importVideoInputFromURL(url: string): Promise<MediaInputDTO> {
   return apiRequest("/api/admin/v1/media/inputs/import", { method: "POST", body: { url } }, decodeMediaInput);
 }
 
-// 以 multipart/form-data 上传本地图片或视频到有 TTL 的临时输入区。
-// 注意：不要手动设置 Content-Type，浏览器会自动带上 multipart 边界。
-export function uploadMediaInput(file: File): Promise<MediaInputDTO> {
-  const body = new FormData();
-  body.append("file", file, file.name);
-  return apiRequest("/api/admin/v1/media/inputs/upload", { method: "POST", body }, decodeMediaInput);
+type InputUploadDTO = {uploadId:string;offset:number;chunkBytes:number;expiresAt:string};
+const decodeInputUpload = createValidatedDecoder<InputUploadDTO>("input upload",hasShape({
+  uploadId:isString,offset:isNumber,chunkBytes:isNumber,expiresAt:isString,
+}));
+
+// Each body remains below CDN limits, including an exactly 100 MiB source file.
+export async function uploadMediaInput(file: File): Promise<MediaInputDTO> {
+  if(file.size<1||file.size>100*1024*1024) throw new Error("File must be between 1 byte and 100 MiB");
+  const path="/api/admin/v1/media/inputs/uploads";
+  const upload=await apiRequest(path,{method:"POST",body:{sizeBytes:file.size,mimeType:file.type}},decodeInputUpload);
+  if(!/^[0-9a-f]{48}$/.test(upload.uploadId)||upload.chunkBytes<1||upload.chunkBytes>8*1024*1024) throw new Error("Invalid upload session");
+  try {
+    for(let offset=0;offset<file.size;){
+      const chunk=file.slice(offset,offset+upload.chunkBytes);
+      const result=await apiRequest(`${path}/${upload.uploadId}?offset=${offset}`,{method:"PUT",headers:{"Content-Type":"application/octet-stream"},body:chunk},decodeInputUpload);
+      if(result.offset!==offset+chunk.size) throw new Error("Upload offset mismatch");
+      offset=result.offset;
+    }
+    return await apiRequest(`${path}/${upload.uploadId}/complete`,{method:"POST"},decodeMediaInput);
+  } catch(error) {
+    await apiRequest(`${path}/${upload.uploadId}`,{method:"DELETE"},value=>value).catch(()=>undefined);
+    throw error;
+  }
 }

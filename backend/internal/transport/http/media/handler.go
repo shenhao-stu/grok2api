@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	mediaapp "github.com/chenyme/grok2api/backend/internal/application/media"
 	"github.com/chenyme/grok2api/backend/internal/pkg/mediafile"
@@ -17,6 +18,9 @@ import (
 type Handler struct {
 	service     *mediaapp.Service
 	ingestSlots chan struct{}
+	uploadOnce  sync.Once
+	uploadStore *mediaapp.InputUploadStore
+	uploadErr   error
 }
 
 func NewHandler(service *mediaapp.Service) *Handler {
@@ -42,6 +46,11 @@ func (h *Handler) RegisterAdmin(router *gin.RouterGroup) {
 	router.GET("/media/images/stats", h.imageStats)
 	router.POST("/media/inputs/import", h.importInputImageFromURL)
 	router.POST("/media/inputs/upload", h.uploadInputAsset)
+	router.POST("/media/inputs/uploads", h.createInputUpload)
+	router.PUT("/media/inputs/uploads/:uploadId", h.appendInputUpload)
+	router.POST("/media/inputs/uploads/:uploadId/complete", h.completeInputUpload)
+	router.DELETE("/media/inputs/uploads/:uploadId", h.deleteInputUpload)
+	router.GET("/media/inputs/:assetId/content", h.getInputContent)
 	router.GET("/media/videos", h.listVideos)
 	router.DELETE("/media/videos", h.deleteVideos)
 	router.GET("/media/videos/stats", h.videoStats)

@@ -29,7 +29,7 @@ const (
 	ClearanceModeOnDemand         = "on_demand"
 	DefaultStatsigSignerURL       = "https://grok.wodf.de/sign"
 	DefaultFlareSolverrURL        = "http://flaresolverr:8191"
-	RecommendedBuildClientVersion = "1.0.40"
+	RecommendedBuildClientVersion = "1.0.46"
 	RecommendedBuildUserAgent     = "grok-shell/" + RecommendedBuildClientVersion + " (linux; x86_64)"
 
 	maxServerBodyBytes     = 256 << 20
@@ -562,8 +562,8 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Media.Local.Path) == "" {
 		return errors.New("media.local.path 不能为空")
 	}
-	if c.Media.MaxImageBytes < 1<<20 || c.Media.MaxImageBytes > 32<<20 {
-		return errors.New("media.maxImageBytes 必须在 1 MiB 到 32 MiB 之间")
+	if c.Media.MaxImageBytes < 1<<20 || c.Media.MaxImageBytes > 100<<20 {
+		return errors.New("media.maxImageBytes 必须在 1 MiB 到 100 MiB 之间")
 	}
 	if c.Media.MaxTotalBytes < c.Media.MaxImageBytes || c.Media.MaxTotalBytes > 1<<40 {
 		return errors.New("media.maxTotalBytes 必须不小于单图上限且不超过 1 TiB")
@@ -878,7 +878,7 @@ func defaultConfig() Config {
 	return Config{
 		Server: ServerConfig{
 			Listen:                "127.0.0.1:8000",
-			MaxBodyBytes:          90 << 20,
+			MaxBodyBytes:          140 << 20,
 			MaxActiveBodyBytes:    512 << 20,
 			MaxConcurrentRequests: 1024,
 			ReadTimeout:           Duration(15 * time.Minute),
@@ -924,7 +924,7 @@ func defaultConfig() Config {
 			RefreshConcurrency: 25, RandomDelay: Duration(500 * time.Millisecond),
 		},
 		Media: MediaConfig{
-			Driver: "local", MaxImageBytes: 32 << 20, MaxTotalBytes: 1 << 30,
+			Driver: "local", MaxImageBytes: 100 << 20, MaxTotalBytes: 1 << 30,
 			CleanupThresholdPercent: 80, CleanupInterval: Duration(10 * time.Minute),
 			Local: LocalMediaConfig{Path: "./data/media"},
 		},
