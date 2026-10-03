@@ -719,6 +719,7 @@ func (d *Database) ensureClientKeyLimitConstraints(ctx context.Context) error {
 	constraints := []consoleConstraint{
 		{model: &clientKeyModel{}, table: "client_keys", name: "chk_client_keys_rpm"},
 		{model: &clientKeyModel{}, table: "client_keys", name: "chk_client_keys_max_concurrent"},
+		{model: &accountModel{}, table: "provider_accounts", name: "chk_accounts_max_concurrent"},
 	}
 	migrate := func() error {
 		db := d.db.WithContext(ctx)

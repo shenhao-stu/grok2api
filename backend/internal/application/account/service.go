@@ -800,8 +800,8 @@ func (s *Service) BatchUpdate(ctx context.Context, providerValue accountdomain.P
 		return 0, invalidInput("账号来源无效")
 	}
 	slices.Sort(ids)
-	if input.MaxConcurrent != nil && (*input.MaxConcurrent < 1 || *input.MaxConcurrent > accountdomain.MaxConcurrent) {
-		return 0, invalidInput("maxConcurrent 必须在 1 到 256 之间")
+	if input.MaxConcurrent != nil && (*input.MaxConcurrent < 0 || *input.MaxConcurrent > accountdomain.MaxConcurrent) {
+		return 0, invalidInput("maxConcurrent 必须在 0 到 256 之间；0 表示不限")
 	}
 	if input.MinimumRemaining != nil && *input.MinimumRemaining < 0 {
 		return 0, invalidInput("minimumRemaining 不能小于零")
@@ -2234,8 +2234,8 @@ func (s *Service) Update(ctx context.Context, id uint64, input UpdateInput) (Vie
 		value.Priority = *input.Priority
 	}
 	if input.MaxConcurrent != nil {
-		if *input.MaxConcurrent < 1 || *input.MaxConcurrent > accountdomain.MaxConcurrent {
-			return View{}, invalidInput("maxConcurrent 必须在 1 到 256 之间")
+		if *input.MaxConcurrent < 0 || *input.MaxConcurrent > accountdomain.MaxConcurrent {
+			return View{}, invalidInput("maxConcurrent 必须在 0 到 256 之间；0 表示不限")
 		}
 		value.MaxConcurrent = *input.MaxConcurrent
 	}

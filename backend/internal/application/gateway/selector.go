@@ -2095,7 +2095,7 @@ func (s *Selector) claimAccountSlotTracked(ctx context.Context, value account.Cr
 		return nil, nil
 	}
 	limit := value.MaxConcurrent
-	if limit <= 0 {
+	if limit < 0 {
 		limit = account.DefaultMaxConcurrent
 	}
 	release, acquired, err := s.concurrency.Acquire(ctx, accountConcurrencyKey(value.ID), limit)

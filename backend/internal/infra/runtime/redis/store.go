@@ -43,7 +43,7 @@ return 1
 
 var acquireLeaseScript = redisclient.NewScript(`
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
-if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[2]) then return 0 end
+if tonumber(ARGV[2]) > 0 and redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[2]) then return 0 end
 redis.call('ZADD', KEYS[1], ARGV[3], ARGV[4])
 redis.call('PEXPIRE', KEYS[1], ARGV[5])
 return 1
@@ -458,9 +458,6 @@ func (s *Store) Allow(ctx context.Context, key string, limit int, _ time.Time) (
 }
 
 func (s *Store) acquireConcurrency(ctx context.Context, key string, limit int) (func(), bool, error) {
-	if limit <= 0 {
-		return func() {}, true, nil
-	}
 	token, err := randomToken()
 	if err != nil {
 		return nil, false, err

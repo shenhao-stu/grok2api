@@ -38,7 +38,7 @@ type accountModel struct {
 	// ReauthMarkedAt 进入 reauthRequired 的时刻；active 时为 NULL。
 	ReauthMarkedAt   *time.Time
 	Priority         int     `gorm:"not null;default:1"`
-	MaxConcurrent    int     `gorm:"not null;default:8;check:chk_accounts_max_concurrent,max_concurrent BETWEEN 1 AND 256"`
+	MaxConcurrent    int     `gorm:"not null;default:8;check:chk_accounts_max_concurrent,max_concurrent BETWEEN 0 AND 256"`
 	MinimumRemaining float64 `gorm:"not null;check:chk_accounts_minimum_remaining,minimum_remaining >= 0"`
 	FailureCount     int     `gorm:"not null;check:chk_accounts_failure_count,failure_count >= 0"`
 	CooldownUntil    *time.Time

@@ -103,12 +103,9 @@ func NewConcurrencyLimiter() *ConcurrencyLimiter {
 }
 
 func (l *ConcurrencyLimiter) Acquire(_ context.Context, key string, limit int) (func(), bool, error) {
-	if limit <= 0 {
-		return func() {}, true, nil
-	}
 	shard := &l.shards[shardIndex(key)]
 	shard.mu.Lock()
-	if shard.counts[key] >= limit {
+	if limit > 0 && shard.counts[key] >= limit {
 		shard.mu.Unlock()
 		return nil, false, nil
 	}

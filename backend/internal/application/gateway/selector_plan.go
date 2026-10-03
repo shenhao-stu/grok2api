@@ -183,12 +183,12 @@ func (s *Selector) planCandidateIndexesWithHints(ctx context.Context, values []a
 		}
 		candidate := values[index]
 		limit := candidate.Credential.MaxConcurrent
-		if limit <= 0 {
+		if limit < 0 {
 			limit = account.DefaultMaxConcurrent
 		}
 		// 已知满载的账号不进入计划，避免高优先级满载账号逐个 claim 失败后
 		// 才轮到仍有容量的低优先级账号。
-		if inFlight[position] >= limit {
+		if limit > 0 && inFlight[position] >= limit {
 			continue
 		}
 		score := candidateScore{
