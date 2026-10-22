@@ -264,8 +264,8 @@ function VideoPreview({ assetId }: { assetId: string }) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const media = usePrivateMedia("videos", assetId);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  useEffect(()=>{ if(media.error)setState("error"); },[media.error]);
+  const [playbackState, setState] = useState<"loading" | "ready" | "error">("loading");
+  const state = media.error ? "error" : !media.url ? "loading" : playbackState;
 
   function retry(): void {
     setState("loading");
