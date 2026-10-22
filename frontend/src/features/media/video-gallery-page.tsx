@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock, Eye, ListVideo, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { usePrivateMedia } from "./use-private-media";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
