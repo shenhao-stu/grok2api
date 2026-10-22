@@ -1,10 +1,11 @@
 # Welfare deployment changes
 
 This fork preserves the Welfare customizations while merging upstream
-`7c889a960e2638341b4dae9a5c81af0e0f38c87f` (checked 2026-10-02).
+`e2fd7ab481a30a1965bb61395d437154cf247c92` (checked 2026-10-22).
+Merge decisions and validation: [upstream sync](docs/upstream-sync-20261022.md).
 Upstream MIT licensing and attribution remain unchanged.
 
-- The Build transport defaults to the verified Grok CLI 1.0.46 client version.
+- The Build transport defaults to the upstream Grok CLI 1.0.60 client version.
   Updating this fingerprint does not grant OAuth access or manufacture a Build account.
 - Authenticated media inputs accept up to 100 MiB. Browser uploads use sequential
   8 MiB chunks, an hour-long expiry, durable offset metadata, owner isolation and

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock, Eye, ListVideo, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { usePrivateMedia } from "./use-private-media";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -264,8 +264,8 @@ function VideoPreview({ assetId }: { assetId: string }) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const media = usePrivateMedia("videos", assetId);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  useEffect(()=>{ if(media.error)setState("error"); },[media.error]);
+  const [playbackState, setState] = useState<"loading" | "ready" | "error">("loading");
+  const state = media.error ? "error" : !media.url ? "loading" : playbackState;
 
   function retry(): void {
     setState("loading");

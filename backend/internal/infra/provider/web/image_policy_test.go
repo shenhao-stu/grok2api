@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -57,14 +58,18 @@ func TestImagineSemanticFailureReturnsTypedErrorWithoutAdapterRetry(t *testing.T
 						return
 					}
 					defer conn.Close()
+					var message map[string]any
 					for range 2 {
-						var message map[string]any
 						if err := conn.ReadJSON(&message); err != nil {
 							t.Error(err)
 							return
 						}
 					}
-					_ = conn.WriteJSON(scenario.frame)
+					item := message["item"].(map[string]any)
+					content := item["content"].([]any)[0].(map[string]any)
+					frame := maps.Clone(scenario.frame)
+					frame["requestId"] = content["requestId"]
+					_ = conn.WriteJSON(frame)
 				}))
 				defer server.Close()
 				adapter, credential := testMediaAdapter(t, server.URL)
